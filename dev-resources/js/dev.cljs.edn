@@ -1,0 +1,2 @@
+{:require [plumula.delta.dev]
+ :compiler-options {:asset-path "js/dev.out"}}
