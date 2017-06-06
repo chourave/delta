@@ -24,7 +24,8 @@
   (:require [clojure.core :as core]
             [plumula.delta :as delta]
             [plumula.delta.operation :as operation]
-            [plumula.delta.util :as util])
+            [plumula.delta.util :as util]
+            [plumula.diff :as diff])
   (:refer-clojure :exclude [concat comp drop take]))
 
 (def no-delta delta/no-delta)
@@ -332,8 +333,64 @@
     (zipmap embeds embed-chars)))
 
 (defn- stringify
-    ""
-    [mapping inserts]
-    (->> inserts
-         (eduction (mapcat #(if (string? %) % (mapping %))))
-         (apply str)))
+  ""
+  [mapping inserts]
+  (->> inserts
+       (eduction (mapcat #(if (string? %) % (mapping %))))
+       (apply str)))
+
+(defn- diff-equal
+  ""
+  [length delta other result]
+  (if (zero? length)
+    [delta other result]
+    (let [match-length (min length
+                            (-> delta first operation/length)
+                            (-> other first operation/length))]
+      (recur (- length match-length)
+             (drop match-length delta)
+             (drop match-length other)
+             (retain match-length
+                     (operation/attribute-diff
+                       (-> delta first ::delta/attributes)
+                       (-> other first ::delta/attributes))
+                     result)))))
+
+(defn diff
+  ""
+  [delta other & opts]
+  (cond
+    (not-every? ::delta/insert (core/concat delta other))
+    (throw (new #?(:clj Exception :cljs js/Error) "diff called on non-document"))
+
+    (= delta other)
+    no-delta
+
+    :else
+    (let [[delta-inserts other-inserts] (map #(map ::delta/insert %) [delta other])
+          mapping (embed-mapping (core/concat delta-inserts other-inserts))
+          [delta-str other-str] (map #(stringify mapping %) [delta-inserts other-inserts])]
+      (loop [[d & d-rest] (apply diff/diff delta-str other-str opts)
+             delta delta
+             other other
+             result []]
+        (let [op-length (-> d ::diff/text count)]
+          (case (::diff/operation d)
+            ::diff/insert
+            (recur d-rest
+                   delta
+                   (drop op-length other)
+                   (concat result (take op-length other)))
+
+            ::diff/delete
+            (recur d-rest
+                   (drop op-length delta)
+                   other
+                   (delete op-length result))
+
+            ::diff/equal
+            (let [[delta other result] (diff-equal op-length delta other result)]
+              (recur d-rest delta other result))
+
+            nil
+            (chop result)))))))

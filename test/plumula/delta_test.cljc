@@ -561,4 +561,52 @@
         (is (= "_" (stringify mapping [{:img "bla"}]))))
       (testing "mixing embeds and text"
         (is (= "conch_flub"
-               (stringify mapping ["conch" {:img "bla"} "flub"])))))))
+               (stringify mapping ["conch" {:img "bla"} "flub"]))))))
+  (testing "diff"
+    (testing "insert"
+      (is (= (->> (eager/retain 1) (eager/insert "B"))
+             (eager/diff (eager/insert "A") (eager/insert "AB")))))
+    (testing "delete"
+      (is (= (->> (eager/retain 1) (eager/delete 1))
+             (eager/diff (eager/insert "AB") (eager/insert "A")))))
+    (testing "retain"
+      (is (= []
+             (eager/diff (eager/insert "A") (eager/insert "A")))))
+    (testing "format"
+      (is (= (eager/retain 1 {:bold true})
+             (eager/diff (eager/insert "A") (eager/insert "A" {:bold true})))))
+    (testing "object attributes"
+      (is (= (eager/retain 1 {:font {:family "Helvetica" :size "16px"}})
+             (eager/diff (eager/insert "A" {:font {:family "Helvetica" :size "15px"}})
+                         (eager/insert "A" {:font {:family "Helvetica" :size "16px"}})))))
+    (testing "embed integer match"
+      (is (empty (eager/diff (eager/insert 1) (eager/insert 1)))))
+    (testing "embed integer mismatch"
+      (is (= (->> (eager/delete 1) (eager/insert 2))
+             (eager/diff (eager/insert 1) (eager/insert 2)))))
+    (testing "embed object match"
+      (is (empty (eager/diff (eager/insert {:image "http://quilljs.com"})
+                             (eager/insert {:image "http://quilljs.com"})))))
+    (testing "embed object mismatch"
+      (is (= (->> (eager/insert {:image "http://github.com"})
+                  (eager/delete 1))
+             (eager/diff (eager/insert {:image "http://quilljs.com"})
+                         (eager/insert {:image "http://github.com"})))))
+    (testing "inconvenient indexes"
+      (is (= (->> (eager/insert "Good" {:bold true})
+                  (eager/delete 2)
+                  (eager/retain 1 {:italic true, :color nil})
+                  (eager/delete 3)
+                  (eager/insert "og" {:italic true}))
+             (eager/diff
+               (->> (eager/insert "Bad" {:color "red"})
+                    (eager/insert "cat" {:color "blue"}))
+               (->> (eager/insert "Good" {:bold true})
+                    (eager/insert "dog" {:italic true}))))))
+    (testing "same document"
+      (let [a (->> (eager/insert "A") (eager/insert "B" {:bold true}))]
+        (is (empty? (eager/diff a a)))))
+    (testing "non-document"
+      (is (thrown-with-msg? #?(:clj Exception :cljs js/Error) #"diff called on non-document"
+                            (eager/diff (eager/insert "Test")
+                                        (eager/delete 4)))))))

@@ -155,3 +155,12 @@
    (when (pos? length)
      (-> {:plumula.delta/retain length}
          (with-attributes attributes)))))
+
+(defn attribute-diff
+  ""
+  [attributes other-attributes]
+  (into {}
+        (comp
+          (remove #(= (% attributes) (% other-attributes)))
+          (map (fn [k] [k (k other-attributes)])))
+        (-> (into (set (keys attributes)) (keys other-attributes)))))
