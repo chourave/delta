@@ -297,55 +297,56 @@
     (-> (compose' first-delta second-delta no-delta)
         chop)))
 
-(defn- insert->seq
-  ""
-  [{:keys [::delta/insert]}]
-  (if (string? insert) insert [insert]))
-
 (defn- character-set
   ""
-  [& deltas]
-  (->> deltas
-       (apply core/concat)
-       (map insert->seq)
+  [operations]
+  (->> operations
+       (eduction
+         (core/comp
+           (map ::delta/insert)
+           (filter string?)))
        (apply core/concat)
        set))
 
-(defn- raw-mapping
+(defn- embed-set
   ""
-  [charset]
-  (map-indexed (fn [i c] [c (char (inc i))]) charset))
+  [operations]
+  (->> operations
+       (eduction
+         (core/comp
+           (map ::delta/insert)
+           (remove string?)))
+       set))
+
+(defn- available-characters
+  ""
+  [used-characters]
+  (->> (range)
+       (drop 32)
+       (eduction
+         (core/comp
+           (map char)
+           (remove used-characters)
+           (map str)))))
+
+(defn- embed-mapping
+  ""
+  [operations]
+  (let [chars (character-set operations)
+        embeds (embed-set operations)
+        embed-chars (available-characters chars)]
+    (zipmap embeds embed-chars)))
 
 (def ^:private char->int
   ""
   #?(:clj int :cljs #(.charCodeAt % 0)))
 
-(defn- fixup-newline
-  "Ensure that \newline maps to itself.
-  The :checklines optimisation of diff needs this to work."
-  [charset raw mapping]
-  (if-not (charset \newline)
-    mapping
-    (let [displaced (dec (char->int \newline))
-          fixup-displaced (fn [m]
-                            (let [d (-> (nth raw displaced)
-                                        first)]
-                              (assoc m d (mapping \newline))))]
-      (cond-> (assoc mapping \newline \newline)
-              (< displaced (count raw)) fixup-displaced))))
-
-(defn- character-mapping
-  ""
-  [charset]
-  (let [raw (raw-mapping charset)
-        mapping (into {} raw)]
-    (fixup-newline charset raw mapping)))
-
 (defn- stringify
-  ""
-  [mapping delta]
-  (->> delta
-       (map insert->seq)
-       (apply core/concat)
-       (map mapping)
-       (apply str)))
+    ""
+    [mapping delta]
+    (->> delta
+         (eduction
+           (core/comp
+             (map ::delta/insert)
+             (mapcat #(if (string? %) % (mapping %)))))
+         (apply str)))

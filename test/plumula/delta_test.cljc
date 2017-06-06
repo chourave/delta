@@ -507,7 +507,8 @@
       (is (= (eager/insert 2) (eager/comp a b))))))
 
 (deftest test-diff
-  (let [character-set @#'eager/character-set]
+  (let [character-set @#'eager/character-set
+        embed-set @#'eager/embed-set]
     (testing "character-set"
       (testing "one string"
         (is (= #{\a \b \c} (character-set (eager/insert "abc")))))
@@ -516,74 +517,61 @@
                (character-set (->> (eager/insert "abc")
                                    (eager/insert "d" {:bold true})
                                    (eager/insert "ef"))))))
-      (testing "many deltas"
-        (is (= #{\a \b \c \d \e \f}
-               (character-set (eager/insert "abc")
-                              (eager/insert "d" {:bold true})
-                              (eager/insert "ef")))))
       (testing "one embed"
-        (is (= #{{:img "gna"}} (character-set (eager/insert {:img "gna"})))))
+        (is (= #{} (character-set (eager/insert {:img "gna"})))))
       (testing "mixing embeds and text"
-        (is (= #{\c \o \n \h \f \l \u \b {:img "gna"}}
+        (is (= #{\c \o \n \h \f \l \u \b}
                (character-set (->> (eager/insert "conch")
                                    (eager/insert {:img "gna"})
                                    (eager/insert "flub")))))))
-    (testing "fixup-newline"
-      (let [fixup-newline @#'eager/fixup-newline
-            raw-mapping @#'eager/raw-mapping]
-        (testing "no newline => leave mapping alone"
-          (let [charset #{\a \b}
-                raw (raw-mapping charset)
-                mapping (into {} raw)]
-            (is (= mapping (fixup-newline charset raw mapping)))))
-        (testing "newline => map to itself"
-          (let [charset #{\b \c \newline \d \e \f \g \h \i \j \k \l \m}
-                raw (raw-mapping charset)
-                mapping (into {} raw)
-                fixed (fixup-newline charset raw mapping)]
-            (is (= \newline (fixed \newline)))
-            (is (= (count charset) (count (vals fixed))))))
-        (testing "newline with small charset"
-          (let [charset #{\b \c \newline}
-                raw (raw-mapping charset)
-                mapping (into {} raw)
-                fixed (fixup-newline charset raw mapping)]
-            (is (= \newline (fixed \newline)))
-            (is (= (count charset) (count (vals fixed))))))))
-    (testing "character-mapping"
-      (let [character-mapping @#'eager/character-mapping
-            charset (character-set (eager/insert "flub")
-                                   (eager/insert {:img "ya"})
-                                   (eager/insert {:video "ya"})
-                                   (eager/insert "grobnik furkulam\n"))
-            mapping (character-mapping charset)]
-        (testing "assigns a distinct character to every character"
-          (is (= charset (set (keys mapping))))
-          (is (= (count charset) (count (-> mapping vals set))))
-          (is (every? char? (vals mapping))))
-        (testing "does not assign the NUL character"
-          (is (not (some #{\u0000} (vals mapping)))))
-        (testing "assigns a character to every embed"
-          (is (every? some? (map mapping #{{:img "ya"} {:video "ya"}}))))
-        (testing "leaves newline alone"
-          (is (= \newline (mapping \newline)))))))
-  (testing "stringify"
-    (let [char->int @#'eager/char->int
-          stringify @#'eager/stringify
-          mapping (into {} (map (fn [c] [(char c) (char (- c 32))])
-                                (range (char->int \a) (inc (char->int \z)))))
-          mapping (assoc mapping {:img "bla"} \_)]
-      (testing "one string"
-        (is (= "ABC" (stringify mapping (eager/insert "abc")))))
-      (testing "many strings"
-        (is (= "ABCDEF"
-               (stringify mapping (->> (eager/insert "abc")
-                                       (eager/insert "d" {:bold true})
-                                       (eager/insert "ef"))))))
+    (testing "embed-set"
       (testing "one embed"
-        (is (= "_" (stringify mapping (eager/insert {:img "bla"})))))
+        (is (= #{{:img "gna"}} (embed-set (eager/insert {:img "gna"})))))
+      (testing "many embed"
+        (is (= #{{:img "gna"} {:img "yo"} {:img "blu"}}
+               (embed-set (->> (eager/insert {:img "gna"})
+                               (eager/insert {:img "yo"} {:bold true})
+                               (eager/insert {:img "blu"}))))))
+      (testing "one string"
+        (is (= #{} (embed-set (eager/insert "abc")))))
       (testing "mixing embeds and text"
-        (is (= "CONCH_FLUB"
-               (stringify mapping (->> (eager/insert "conch")
-                                       (eager/insert {:img "bla"})
-                                       (eager/insert "flub")))))))))
+        (is (= #{{:img "gna"}}
+               (embed-set (->> (eager/insert "conch")
+                               (eager/insert {:img "gna"})
+                               (eager/insert "flub")))))))
+    (testing "embed-mapping"
+      (let [embed-mapping @#'eager/embed-mapping
+            doc (->> (eager/insert "flub")
+                     (eager/insert {:img "ya"})
+                     (eager/insert {:video "ya"})
+                     (eager/insert "grobnik furkulam\n"))
+            chars (character-set doc)
+            embeds (embed-set doc)
+            mapping (embed-mapping doc)]
+        (testing "assigns a distinct character to every embed"
+          (is (= embeds (set (keys mapping))))
+          (is (= (count embeds) (count (-> mapping vals set))))
+          (is (every? string? (vals mapping)))
+          (is (every? #(= 1 (count %)) (vals mapping))))
+        (testing "does not assign the NUL and newline characters"
+          (is (not (some #{\u0000 \newline} (vals mapping)))))
+        (testing "assigns a character to every embed"
+          (is (every? some? (map mapping #{{:img "ya"} {:video "ya"}})))))))
+  (testing "stringify"
+      (let [char->int @#'eager/char->int
+            stringify @#'eager/stringify
+            mapping {{:img "bla"} "_"}]
+        (testing "one string"
+          (is (= "abc" (stringify mapping (eager/insert "abc")))))
+        (testing "many strings"
+          (is (= "abcdef"
+                 (stringify mapping (->> (eager/insert "abc")
+                                         (eager/insert "d" {:bold true})
+                                         (eager/insert "ef"))))))
+        (testing "one embed"
+          (is (= "_" (stringify mapping (eager/insert {:img "bla"})))))
+        (testing "mixing embeds and text"
+          (is (= "conch_flub"
+                 (stringify mapping (->> (eager/insert "conch")
+                                         (eager/insert {:img "bla"})
+                                         (eager/insert "flub")))))))))
