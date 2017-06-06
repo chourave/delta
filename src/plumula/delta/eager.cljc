@@ -299,23 +299,17 @@
 
 (defn- character-set
   ""
-  [operations]
-  (->> operations
-       (eduction
-         (core/comp
-           (map ::delta/insert)
-           (filter string?)))
+  [inserts]
+  (->> inserts
+       (eduction (filter string?))
        (apply core/concat)
        set))
 
 (defn- embed-set
   ""
-  [operations]
-  (->> operations
-       (eduction
-         (core/comp
-           (map ::delta/insert)
-           (remove string?)))
+  [inserts]
+  (->> inserts
+       (eduction (remove string?))
        set))
 
 (defn- available-characters
@@ -331,22 +325,15 @@
 
 (defn- embed-mapping
   ""
-  [operations]
-  (let [chars (character-set operations)
-        embeds (embed-set operations)
+  [inserts]
+  (let [chars (character-set inserts)
+        embeds (embed-set inserts)
         embed-chars (available-characters chars)]
     (zipmap embeds embed-chars)))
 
-(def ^:private char->int
-  ""
-  #?(:clj int :cljs #(.charCodeAt % 0)))
-
 (defn- stringify
     ""
-    [mapping delta]
-    (->> delta
-         (eduction
-           (core/comp
-             (map ::delta/insert)
-             (mapcat #(if (string? %) % (mapping %)))))
+    [mapping inserts]
+    (->> inserts
+         (eduction (mapcat #(if (string? %) % (mapping %))))
          (apply str)))

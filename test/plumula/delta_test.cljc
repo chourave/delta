@@ -511,40 +511,32 @@
         embed-set @#'eager/embed-set]
     (testing "character-set"
       (testing "one string"
-        (is (= #{\a \b \c} (character-set (eager/insert "abc")))))
+        (is (= #{\a \b \c} (character-set ["abc"]))))
       (testing "many strings"
         (is (= #{\a \b \c \d \e \f}
-               (character-set (->> (eager/insert "abc")
-                                   (eager/insert "d" {:bold true})
-                                   (eager/insert "ef"))))))
+               (character-set ["abc" "d" "ef"]))))
       (testing "one embed"
-        (is (= #{} (character-set (eager/insert {:img "gna"})))))
+        (is (= #{} (character-set [{:img "gna"}]))))
       (testing "mixing embeds and text"
         (is (= #{\c \o \n \h \f \l \u \b}
-               (character-set (->> (eager/insert "conch")
-                                   (eager/insert {:img "gna"})
-                                   (eager/insert "flub")))))))
+               (character-set ["conch" {:img "gna"} "flub"])))))
     (testing "embed-set"
       (testing "one embed"
-        (is (= #{{:img "gna"}} (embed-set (eager/insert {:img "gna"})))))
-      (testing "many embed"
+        (is (= #{{:img "gna"}} (embed-set [{:img "gna"}]))))
+      (testing "many embeds"
         (is (= #{{:img "gna"} {:img "yo"} {:img "blu"}}
-               (embed-set (->> (eager/insert {:img "gna"})
-                               (eager/insert {:img "yo"} {:bold true})
-                               (eager/insert {:img "blu"}))))))
+               (embed-set [{:img "gna"} {:img "yo"} {:img "blu"}]))))
       (testing "one string"
-        (is (= #{} (embed-set (eager/insert "abc")))))
+        (is (= #{} (embed-set ["abc"]))))
       (testing "mixing embeds and text"
         (is (= #{{:img "gna"}}
-               (embed-set (->> (eager/insert "conch")
-                               (eager/insert {:img "gna"})
-                               (eager/insert "flub")))))))
+               (embed-set ["conch" {:img "gna"} "flub"])))))
     (testing "embed-mapping"
       (let [embed-mapping @#'eager/embed-mapping
-            doc (->> (eager/insert "flub")
-                     (eager/insert {:img "ya"})
-                     (eager/insert {:video "ya"})
-                     (eager/insert "grobnik furkulam\n"))
+            doc ["flub"
+                 {:img "ya"}
+                 {:video "ya"}
+                 "grobnik furkulam\n"]
             chars (character-set doc)
             embeds (embed-set doc)
             mapping (embed-mapping doc)]
@@ -558,20 +550,15 @@
         (testing "assigns a character to every embed"
           (is (every? some? (map mapping #{{:img "ya"} {:video "ya"}})))))))
   (testing "stringify"
-      (let [char->int @#'eager/char->int
-            stringify @#'eager/stringify
-            mapping {{:img "bla"} "_"}]
-        (testing "one string"
-          (is (= "abc" (stringify mapping (eager/insert "abc")))))
-        (testing "many strings"
-          (is (= "abcdef"
-                 (stringify mapping (->> (eager/insert "abc")
-                                         (eager/insert "d" {:bold true})
-                                         (eager/insert "ef"))))))
-        (testing "one embed"
-          (is (= "_" (stringify mapping (eager/insert {:img "bla"})))))
-        (testing "mixing embeds and text"
-          (is (= "conch_flub"
-                 (stringify mapping (->> (eager/insert "conch")
-                                         (eager/insert {:img "bla"})
-                                         (eager/insert "flub")))))))))
+    (let [stringify @#'eager/stringify
+          mapping {{:img "bla"} "_"}]
+      (testing "one string"
+        (is (= "abc" (stringify mapping ["abc"]))))
+      (testing "many strings"
+        (is (= "abcdef"
+               (stringify mapping ["abc" "d" {:bold true} "ef"]))))
+      (testing "one embed"
+        (is (= "_" (stringify mapping [{:img "bla"}]))))
+      (testing "mixing embeds and text"
+        (is (= "conch_flub"
+               (stringify mapping ["conch" {:img "bla"} "flub"])))))))
