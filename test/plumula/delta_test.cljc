@@ -22,186 +22,156 @@
 
 (ns plumula.delta-test
   (:require [plumula.delta :as delta]
-            [plumula.delta.eager :as eager]
-            [plumula.delta.lazy :as lazy]
             [clojure.test :refer [deftest is testing run-tests]]))
 
-(defn test-push
-  [push]
-  (testing "push"
-    (testing "into empty"
-      (let [delta []
-            delta (push {::delta/insert "test"} delta)]
-        (is (= 1 (count delta)))))
-    (testing "consecutive deletes"
-      (let [delta (eager/delete 2)
-            delta (push {::delta/delete 3} delta)]
-        (is (= 1 (count delta)))
-        (is (= {::delta/delete 5} (first delta)))))
-    (testing "consecutive text"
-      (let [delta (eager/insert "a")
-            delta (push {::delta/insert "b"} delta)]
-        (is (= 1 (count delta)))
-        (is (= {::delta/insert "ab"} (first delta)))))
-    (testing "consecutive texts with matching attributes"
-      (let [delta (eager/insert "a" {:bold true})
-            delta (push {::delta/insert "b" ::delta/attributes {:bold true}} delta)]
-        (is (= 1 (count delta)))
-        (is (= {::delta/insert "ab" ::delta/attributes {:bold true}} (first delta)))))
-    (testing "consecutive retains with matching attributes"
-      (let [delta (eager/retain 1 {:bold true})
-            delta (push {::delta/retain 3 ::delta/attributes {:bold true}} delta)]
-        (is (= 1 (count delta)))
-        (is (= {::delta/retain 4 ::delta/attributes {:bold true}} (first delta)))))
-    (testing "consecutive texts with mismatched attributes"
-      (let [delta (eager/insert "a" {:bold true})
-            delta (push {::delta/insert "b"} delta)]
-        (is (= 2 (count delta)))))
-    (testing "consecutive embeds with matching attributes"
-      (let [delta (eager/insert 1 {:alt "description"})
-            delta (push {::delta/insert {:url "http://quilljs.com"} ::delta/attributes {:alt "description"}} delta)]
-        (is (= 2 (count delta)))))))
-
-(defn test-delete
-  [delete]
-  (testing "delete"
-    (testing "(0)"
-      (let [delta (eager/delete 0)]
-        (is (= 0 (count delta)))))
-    (testing "(positive)"
-      (let [delta (eager/delete 1)]
-        (is (= 1 (count delta)))
-        (is (= {::delta/delete 1} (first delta)))))))
-
-(defn test-insert
-  [insert]
-  (testing "insert"
-    (testing "(empty)"
-      (let [delta (eager/insert "")]
-        (is (= 0 (count delta)))))
-    (testing "(text)"
-      (let [delta (eager/insert "test")]
-        (is (= 1 (count delta)))
-        (is (= {::delta/insert "test"} (first delta)))))
-    (testing "(text, nil)"
-      (let [delta (eager/insert "test" nil)]
-        (is (= 1 (count delta)))
-        (is (= {::delta/insert "test"} (first delta)))))
-    (testing "(embed)")
-    (let [delta (eager/insert 1)]
-      (is (= 1 (count delta)))
-      (is (= {::delta/insert 1} (first delta))))
-    (testing "(embed, attributes)"
-      (let [attributes {:url "http://quilljs.com" :alt "Quill"}
-            delta (eager/insert 1 attributes)]
-        (is (= 1 (count delta)))
-        (is (= {::delta/insert 1 ::delta/attributes attributes} (first delta)))))
-    (testing "(embed) non-integer"
-      (let [embed {:url "http://quilljs.com"}
-            attributes {:alt "Quill"}
-            delta (eager/insert embed attributes)]
-        (is (= 1 (count delta)))
-        (is (= {::delta/insert embed ::delta/attributes attributes} (first delta)))))
-    (testing "(text, attributes)"
-      (let [delta (eager/insert "test" {:bold true})]
-        (is (= 1 (count delta)))
-        (is (= {::delta/insert "test" ::delta/attributes {:bold true}} (first delta)))))
-    (testing "(text) after delete"
-      (let [delta (->> (eager/delete 1) (eager/insert "a"))
-            expected (->> (eager/insert "a") (eager/delete 1))]
-        (is (= expected delta))))
-    (testing "(text) after delete with merge"
-      (let [delta (->> (eager/insert "a") (eager/delete 1) (eager/insert "b"))
-            expected (->> (eager/insert "ab") (eager/delete 1))]
-        (is (= expected delta))))
-    (testing "(text) after delete no merge"
-      (let [delta (->> (eager/insert 1) (eager/delete 1) (eager/insert "a"))
-            expected (->> (eager/insert 1) (eager/insert "a") (eager/delete 1))]
-        (is (= expected delta))))
-    (testing "(text, {})"
-      (is (= (eager/insert "a") (eager/insert "a" {}))))))
-
-(defn test-retain
-  [retain]
-  (testing "retain"
-    (testing "(0)"
-      (is (= 0 (count (eager/retain 0)))))
-    (testing "(length)"
-      (let [delta (eager/retain 2)]
-        (is (= 1 (count delta)))
-        (is (= {::delta/retain 2} (first delta)))))
-    (testing "(length, nil)"
-      (let [delta (eager/retain 2 nil)]
-        (is (= 1 (count delta)))
-        (is (= {::delta/retain 2} (first delta)))))
-    (testing "(length, attributes)"
-      (let [delta (eager/retain 1 {:bold true})]
-        (is (= 1 (count delta)))
-        (is (= {::delta/retain 1 ::delta/attributes {:bold true}} (first delta)))))
-    (testing "(length, {)"
-      (let [delta (->> (eager/retain 2 {}) (eager/delete 1)) ; Delete prevents chop (??)
-            expected (->> (eager/retain 2) (eager/delete 1))]
-        (is (= expected delta))))))
-
 (deftest test-building
-  (testing "lazy"
-    (test-push lazy/push)
-    (test-delete lazy/delete)
-    (test-insert lazy/insert)
-    (test-retain lazy/retain))
-  (testing "eager"
-    (test-push eager/push)
-    (test-delete eager/delete)
-    (test-insert eager/insert)
-    (test-retain eager/retain)))
-
-(defn test-concat
-  [concat]
-  (testing "empty delta"
-    (let [delta (eager/insert "Test")]
-      (is (= delta (concat delta)))))
-  (testing "unmergeable"
-    (let [delta (eager/insert "Test")
-          expected (->> (eager/insert "Test") (eager/insert "!" {:bold true}))]
-      (is (= expected (concat delta (eager/insert "!" {:bold true}))))))
-  (testing "mergeable"
-    (let [delta (eager/insert "Test" {:bold true})
-          expected (->> (eager/insert "Test!" {:bold true}) (eager/insert "\n"))]
-      (is (= expected (concat delta (->> (eager/insert "!" {:bold true}) (eager/insert "\n")))))))
-  (testing "other arities"
-    (testing "no arg"
-      (is (empty? (concat))))
-    (testing "1 arg"
-      (let [delta (eager/insert "Test")]
-        (is (= delta (concat delta)))))
-    (testing "3 args, unmergeable"
-      (let [d1 (eager/insert "Test")
-            d2 (eager/insert "!" {:bold true})
-            d3 (eager/insert "\n")
-            expected (->> (eager/insert "Test") (eager/insert "!" {:bold true}) (eager/insert "\n"))]
-        (is (= expected (concat d1 d2 d3)))))))
+  (testing "delta"
+    (testing "push"
+      (testing "into empty"
+        (let [delta []
+              delta (delta/push {::delta/insert "test"} delta)]
+          (is (= 1 (count delta)))))
+      (testing "consecutive deletes"
+        (let [delta (delta/delete 2)
+              delta (delta/push {::delta/delete 3} delta)]
+          (is (= 1 (count delta)))
+          (is (= {::delta/delete 5} (first delta)))))
+      (testing "consecutive text"
+        (let [delta (delta/insert "a")
+              delta (delta/push {::delta/insert "b"} delta)]
+          (is (= 1 (count delta)))
+          (is (= {::delta/insert "ab"} (first delta)))))
+      (testing "consecutive texts with matching attributes"
+        (let [delta (delta/insert "a" {:bold true})
+              delta (delta/push {::delta/insert "b" ::delta/attributes {:bold true}} delta)]
+          (is (= 1 (count delta)))
+          (is (= {::delta/insert "ab" ::delta/attributes {:bold true}} (first delta)))))
+      (testing "consecutive retains with matching attributes"
+        (let [delta (delta/retain 1 {:bold true})
+              delta (delta/push {::delta/retain 3 ::delta/attributes {:bold true}} delta)]
+          (is (= 1 (count delta)))
+          (is (= {::delta/retain 4 ::delta/attributes {:bold true}} (first delta)))))
+      (testing "consecutive texts with mismatched attributes"
+        (let [delta (delta/insert "a" {:bold true})
+              delta (delta/push {::delta/insert "b"} delta)]
+          (is (= 2 (count delta)))))
+      (testing "consecutive embeds with matching attributes"
+        (let [delta (delta/insert 1 {:alt "description"})
+              delta (delta/push {::delta/insert {:url "http://quilljs.com"} ::delta/attributes {:alt "description"}} delta)]
+          (is (= 2 (count delta))))))
+    (testing "delete"
+      (testing "(0)"
+        (let [delta (delta/delete 0)]
+          (is (= 0 (count delta)))))
+      (testing "(positive)"
+        (let [delta (delta/delete 1)]
+          (is (= 1 (count delta)))
+          (is (= {::delta/delete 1} (first delta))))))
+    (testing "insert"
+      (testing "(empty)"
+        (let [delta (delta/insert "")]
+          (is (= 0 (count delta)))))
+      (testing "(text)"
+        (let [delta (delta/insert "test")]
+          (is (= 1 (count delta)))
+          (is (= {::delta/insert "test"} (first delta)))))
+      (testing "(text, nil)"
+        (let [delta (delta/insert "test" nil)]
+          (is (= 1 (count delta)))
+          (is (= {::delta/insert "test"} (first delta)))))
+      (testing "(embed)")
+      (let [delta (delta/insert 1)]
+        (is (= 1 (count delta)))
+        (is (= {::delta/insert 1} (first delta))))
+      (testing "(embed, attributes)"
+        (let [attributes {:url "http://quilljs.com" :alt "Quill"}
+              delta (delta/insert 1 attributes)]
+          (is (= 1 (count delta)))
+          (is (= {::delta/insert 1 ::delta/attributes attributes} (first delta)))))
+      (testing "(embed) non-integer"
+        (let [embed {:url "http://quilljs.com"}
+              attributes {:alt "Quill"}
+              delta (delta/insert embed attributes)]
+          (is (= 1 (count delta)))
+          (is (= {::delta/insert embed ::delta/attributes attributes} (first delta)))))
+      (testing "(text, attributes)"
+        (let [delta (delta/insert "test" {:bold true})]
+          (is (= 1 (count delta)))
+          (is (= {::delta/insert "test" ::delta/attributes {:bold true}} (first delta)))))
+      (testing "(text) after delete"
+        (let [delta (->> (delta/delete 1) (delta/insert "a"))
+              expected (->> (delta/insert "a") (delta/delete 1))]
+          (is (= expected delta))))
+      (testing "(text) after delete with merge"
+        (let [delta (->> (delta/insert "a") (delta/delete 1) (delta/insert "b"))
+              expected (->> (delta/insert "ab") (delta/delete 1))]
+          (is (= expected delta))))
+      (testing "(text) after delete no merge"
+        (let [delta (->> (delta/insert 1) (delta/delete 1) (delta/insert "a"))
+              expected (->> (delta/insert 1) (delta/insert "a") (delta/delete 1))]
+          (is (= expected delta))))
+      (testing "(text, {})"
+        (is (= (delta/insert "a") (delta/insert "a" {})))))
+    (testing "retain"
+      (testing "(0)"
+        (is (= 0 (count (delta/retain 0)))))
+      (testing "(length)"
+        (let [delta (delta/retain 2)]
+          (is (= 1 (count delta)))
+          (is (= {::delta/retain 2} (first delta)))))
+      (testing "(length, nil)"
+        (let [delta (delta/retain 2 nil)]
+          (is (= 1 (count delta)))
+          (is (= {::delta/retain 2} (first delta)))))
+      (testing "(length, attributes)"
+        (let [delta (delta/retain 1 {:bold true})]
+          (is (= 1 (count delta)))
+          (is (= {::delta/retain 1 ::delta/attributes {:bold true}} (first delta)))))
+      (testing "(length, {)"
+        (let [delta (->> (delta/retain 2 {}) (delta/delete 1)) ; Delete prevents chop (??)
+              expected (->> (delta/retain 2) (delta/delete 1))]
+          (is (= expected delta)))))))
 
 (deftest test-helpers
   (testing "concat"
-    (testing "lazy"
-      (test-concat lazy/concat))
-    (testing "eager"
-      (test-concat eager/concat)))
+    (testing "empty delta"
+      (let [delta (delta/insert "Test")]
+        (is (= delta (delta/concat delta)))))
+    (testing "unmergeable"
+      (let [delta (delta/insert "Test")
+            expected (->> (delta/insert "Test") (delta/insert "!" {:bold true}))]
+        (is (= expected (delta/concat delta (delta/insert "!" {:bold true}))))))
+    (testing "mergeable"
+      (let [delta (delta/insert "Test" {:bold true})
+            expected (->> (delta/insert "Test!" {:bold true}) (delta/insert "\n"))]
+        (is (= expected (delta/concat delta (->> (delta/insert "!" {:bold true}) (delta/insert "\n")))))))
+    (testing "other arities"
+      (testing "no arg"
+        (is (empty? (delta/concat))))
+      (testing "1 arg"
+        (let [delta (delta/insert "Test")]
+          (is (= delta (delta/concat delta)))))
+      (testing "3 args, unmergeable"
+        (let [d1 (delta/insert "Test")
+              d2 (delta/insert "!" {:bold true})
+              d3 (delta/insert "\n")
+              expected (->> (delta/insert "Test") (delta/insert "!" {:bold true}) (delta/insert "\n"))]
+          (is (= expected (delta/concat d1 d2 d3)))))))
 
   (testing "chop"
     (testing "retain"
-      (let [delta (->> (eager/insert "Test") (eager/retain 4))
-            expected (eager/insert "Test")]
-        (is (= expected (eager/chop delta)))))
+      (let [delta (->> (delta/insert "Test") (delta/retain 4))
+            expected (delta/insert "Test")]
+        (is (= expected (delta/chop delta)))))
     (testing "insert"
-      (let [delta (eager/insert "Test")]
-        (is (= delta (eager/chop delta)))))
+      (let [delta (delta/insert "Test")]
+        (is (= delta (delta/chop delta)))))
     (testing "formatted retain"
-      (let [delta (->> (eager/insert "Test") (eager/retain 4 {:bold true}))]
-        (is (= delta (eager/chop delta))))))
+      (let [delta (->> (delta/insert "Test") (delta/retain 4 {:bold true}))]
+        (is (= delta (delta/chop delta))))))
 
   (testing "split-lines"
-    (let [split-at-newlines (@#'lazy/split-lines #"\n" #"\n$")]
+    (let [split-at-newlines (@#'delta/split-lines #"\n" #"\n$")]
       (testing "no newline"
         (is (= [{::delta/insert "bla"}] (split-at-newlines {::delta/insert "bla"}))))
       (testing "no newline, keep attributes"
@@ -236,7 +206,7 @@
         (is (= [{::delta/insert 1}] (split-at-newlines {::delta/insert 1}))))))
 
   (testing "build-lines"
-    (let [build-lines @#'lazy/build-lines]
+    (let [build-lines @#'delta/build-lines]
       (testing "empty"
         (is (= [] (sequence build-lines []))))
       (testing "no newline"
@@ -254,261 +224,261 @@
 
   (testing "lines"
     (testing "standard case"
-      (let [delta (->> (eager/insert "Hello\n\n")
-                       (eager/insert "World" {:bold true})
-                       (eager/insert {:image "octocat.png"})
-                       (eager/insert "\n" {:align "right"})
-                       (eager/insert "!"))
-            expected [{::delta/line (eager/insert "Hello")}
+      (let [delta (->> (delta/insert "Hello\n\n")
+                       (delta/insert "World" {:bold true})
+                       (delta/insert {:image "octocat.png"})
+                       (delta/insert "\n" {:align "right"})
+                       (delta/insert "!"))
+            expected [{::delta/line (delta/insert "Hello")}
                       {}
-                      {::delta/line       (->> (eager/insert "World" {:bold true})
-                                               (eager/insert {:image "octocat.png"}))
+                      {::delta/line       (->> (delta/insert "World" {:bold true})
+                                               (delta/insert {:image "octocat.png"}))
                        ::delta/attributes {:align "right"}}
-                      {::delta/line (eager/insert "!")}]]
-        (is (= expected (lazy/lines delta)))))
+                      {::delta/line (delta/insert "!")}]]
+        (is (= expected (delta/lines delta)))))
     (testing "trailing newline"
-      (let [delta (eager/insert "Hello\nWorld!\n")
+      (let [delta (delta/insert "Hello\nWorld!\n")
             expected [{::delta/line [{::delta/insert "Hello"}]}
                       {::delta/line [{::delta/insert "World!"}]}]]
-        (is (= expected (lazy/lines delta)))))
+        (is (= expected (delta/lines delta)))))
     (testing "non-document"
-      (let [delta (->> (eager/retain 1) (eager/delete 2))]
-        (is (empty? (lazy/lines delta)))))
+      (let [delta (->> (delta/retain 1) (delta/delete 2))]
+        (is (empty? (delta/lines delta)))))
 
     (testing "lenght"
       (testing "document"
-        (let [delta (->> (eager/insert "AB" {:bold true}) (eager/insert 1))]
-          (is (= 3 (eager/length delta)))))
+        (let [delta (->> (delta/insert "AB" {:bold true}) (delta/insert 1))]
+          (is (= 3 (delta/length delta)))))
       (testing "mixed"
-        (let [delta (->> (eager/insert "AB" {:bold true})
-                         (eager/insert 1)
-                         (eager/retain 2 {:bold nil})
-                         (eager/delete 1))]
-          (is (= 6 (eager/length delta)))))))
+        (let [delta (->> (delta/insert "AB" {:bold true})
+                         (delta/insert 1)
+                         (delta/retain 2 {:bold nil})
+                         (delta/delete 1))]
+          (is (= 6 (delta/length delta)))))))
 
   (testing "take and drop"
     (testing "whole op"
-      (let [delta (->> (eager/retain 2) (eager/insert "a"))]
-        (is (= (eager/retain 2) (eager/take 2 delta)))
-        (is (= (eager/insert "a") (eager/drop 2 delta)))))
+      (let [delta (->> (delta/retain 2) (delta/insert "a"))]
+        (is (= (delta/retain 2) (delta/take 2 delta)))
+        (is (= (delta/insert "a") (delta/drop 2 delta)))))
     (testing "split text"
-      (let [delta (->> (eager/insert "0123456789") (eager/insert "a" {:bold true}))
-            expected-tail (->> (eager/insert "23456789") (eager/insert "a" {:bold true}))]
-        (is (= (eager/insert "01") (eager/take 2 delta)))
-        (is (= expected-tail (eager/drop 2 delta)))))
+      (let [delta (->> (delta/insert "0123456789") (delta/insert "a" {:bold true}))
+            expected-tail (->> (delta/insert "23456789") (delta/insert "a" {:bold true}))]
+        (is (= (delta/insert "01") (delta/take 2 delta)))
+        (is (= expected-tail (delta/drop 2 delta)))))
     (testing "split op"
-      (let [delta (->> (eager/retain 18) (eager/insert "a" {:bold true}))
-            expected-tail (->> (eager/retain 16) (eager/insert "a" {:bold true}))]
-        (is (= (eager/retain 2) (eager/take 2 delta)))
-        (is (= expected-tail (eager/drop 2 delta)))))
+      (let [delta (->> (delta/retain 18) (delta/insert "a" {:bold true}))
+            expected-tail (->> (delta/retain 16) (delta/insert "a" {:bold true}))]
+        (is (= (delta/retain 2) (delta/take 2 delta)))
+        (is (= expected-tail (delta/drop 2 delta)))))
     (testing "multiple ops"
-      (let [delta (->> (eager/retain 2) (eager/insert "abcd" {:bold true}) (eager/delete 12))
-            expected-head (->> (eager/retain 2) (eager/insert "abcd" {:bold true}) (eager/delete 2))]
-        (is (= expected-head (eager/take 8 delta)))
-        (is (= (eager/delete 10) (eager/drop 8 delta)))))
+      (let [delta (->> (delta/retain 2) (delta/insert "abcd" {:bold true}) (delta/delete 12))
+            expected-head (->> (delta/retain 2) (delta/insert "abcd" {:bold true}) (delta/delete 2))]
+        (is (= expected-head (delta/take 8 delta)))
+        (is (= (delta/delete 10) (delta/drop 8 delta)))))
     (testing "everything"
-      (let [delta (->> (eager/insert "0123"))]
-        (is (= delta (eager/take 4 delta)))
-        (is (empty? (eager/drop 4 delta)))))
+      (let [delta (->> (delta/insert "0123"))]
+        (is (= delta (delta/take 4 delta)))
+        (is (empty? (delta/drop 4 delta)))))
     (testing "overkill"
-      (let [delta (->> (eager/insert "0123"))]
-        (is (= delta (eager/take 18 delta)))
-        (is (empty? (eager/drop 18 delta))))))
+      (let [delta (->> (delta/insert "0123"))]
+        (is (= delta (delta/take 18 delta)))
+        (is (empty? (delta/drop 18 delta))))))
 
   (testing "slice"
     (testing "start"
-      (let [slice (->> (eager/retain 2) (eager/insert "a") (eager/slice 2))
-            expected (->> (eager/insert "a"))]
+      (let [slice (->> (delta/retain 2) (delta/insert "a") (delta/slice 2))
+            expected (->> (delta/insert "a"))]
         (is (= expected slice))))
     (testing "start and end chop"
-      (let [slice (->> (eager/insert "0123456789") (eager/slice 2 7))
-            expected (->> (eager/insert "23456"))]
+      (let [slice (->> (delta/insert "0123456789") (delta/slice 2 7))
+            expected (->> (delta/insert "23456"))]
         (is (= expected slice))))
     (testing "start and end multiple chop"
-      (let [slice (->> (eager/insert "0123" {:bold true}) (eager/insert "4567") (eager/slice 3 5))
-            expected (->> (eager/insert "3" {:bold true}) (eager/insert "4"))]
+      (let [slice (->> (delta/insert "0123" {:bold true}) (delta/insert "4567") (delta/slice 3 5))
+            expected (->> (delta/insert "3" {:bold true}) (delta/insert "4"))]
         (is (= expected slice))))
     (testing "start and end"
-      (let [slice (->> (eager/retain 2) (eager/insert "A" {:bold true}) (eager/insert "B") (eager/slice 2 3))
-            expected (eager/insert "A" {:bold true})]
+      (let [slice (->> (delta/retain 2) (delta/insert "A" {:bold true}) (delta/insert "B") (delta/slice 2 3))
+            expected (delta/insert "A" {:bold true})]
         (is (= expected slice))))
     (testing "no param"
-      (let [delta (->> (eager/retain 2) (eager/insert "A" {:bold true}) (eager/insert "B"))
-            slice (eager/slice delta)]
+      (let [delta (->> (delta/retain 2) (delta/insert "A" {:bold true}) (delta/insert "B"))
+            slice (delta/slice delta)]
         (is (= delta slice))))
     (testing "split ops"
-      (let [slice (->> (eager/insert "AB" {:bold true}) (eager/insert "C") (eager/slice 1 2))
-            expected (->> (eager/insert "B" {:bold true}))]
+      (let [slice (->> (delta/insert "AB" {:bold true}) (delta/insert "C") (delta/slice 1 2))
+            expected (->> (delta/insert "B" {:bold true}))]
         (is (= expected slice))))
     (testing "split ops multiple times"
-      (let [slice (->> (eager/insert "ABC" {:bold true}) (eager/insert "D") (eager/slice 1 2))
-            expected (->> (eager/insert "B" {:bold true}))]
+      (let [slice (->> (delta/insert "ABC" {:bold true}) (delta/insert "D") (delta/slice 1 2))
+            expected (->> (delta/insert "B" {:bold true}))]
         (is (= expected slice))))))
 
 (deftest test-rebase
   (testing "rebase"
     (testing "insert + insert"
-      (let [a (eager/insert "A")
-            b (eager/insert "B")
-            expected (->> (eager/retain 1) (eager/insert "B"))]
-        (is (= expected (eager/rebase a b :base-insert-first true)))
-        (is (= b (eager/rebase a b)))))
+      (let [a (delta/insert "A")
+            b (delta/insert "B")
+            expected (->> (delta/retain 1) (delta/insert "B"))]
+        (is (= expected (delta/rebase a b :base-insert-first true)))
+        (is (= b (delta/rebase a b)))))
     (testing "insert + retain"
-      (let [a (eager/insert "A")
-            b (eager/retain 1 {:bold true :color "red"})
-            expected (->> (eager/retain 1) (eager/retain 1 {:bold true :color "red"}))]
-        (is (= expected (eager/rebase a b)))))
+      (let [a (delta/insert "A")
+            b (delta/retain 1 {:bold true :color "red"})
+            expected (->> (delta/retain 1) (delta/retain 1 {:bold true :color "red"}))]
+        (is (= expected (delta/rebase a b)))))
     (testing "insert + delete"
-      (let [a (eager/insert "A")
-            b (eager/delete 1)
-            expected (->> (eager/retain 1) (eager/delete 1))]
-        (is (= expected (eager/rebase a b)))))
+      (let [a (delta/insert "A")
+            b (delta/delete 1)
+            expected (->> (delta/retain 1) (delta/delete 1))]
+        (is (= expected (delta/rebase a b)))))
     (testing "delete + insert"
-      (let [a (eager/delete 1)
-            b (eager/insert "B")]
-        (is (= b (eager/rebase a b)))))
+      (let [a (delta/delete 1)
+            b (delta/insert "B")]
+        (is (= b (delta/rebase a b)))))
     (testing "delete + retain"
-      (let [a (eager/delete 1)
-            b (eager/retain 1 {:bold true :color "red"})]
-        (is (= [] (eager/rebase a b)))))
+      (let [a (delta/delete 1)
+            b (delta/retain 1 {:bold true :color "red"})]
+        (is (= [] (delta/rebase a b)))))
     (testing "delete + delete"
-      (let [a (eager/delete 1)
-            b (eager/delete 1)]
-        (is (= [] (eager/rebase a b)))))
+      (let [a (delta/delete 1)
+            b (delta/delete 1)]
+        (is (= [] (delta/rebase a b)))))
     (testing "retain + insert"
-      (let [a (eager/retain 1 {:color "blue"})
-            b (eager/insert "B")]
-        (is (= b (eager/rebase a b)))))
+      (let [a (delta/retain 1 {:color "blue"})
+            b (delta/insert "B")]
+        (is (= b (delta/rebase a b)))))
     (testing "retain + retain"
-      (let [a (eager/retain 1 {:color "blue"})
-            b (eager/retain 1 {:bold true :color "red"})
-            expected (eager/retain 1 {:bold true})]
-        (is (= expected (eager/rebase a b :prefer-base-attributes true)))
-        (is (= [] (eager/rebase b a :prefer-base-attributes true)))))
+      (let [a (delta/retain 1 {:color "blue"})
+            b (delta/retain 1 {:bold true :color "red"})
+            expected (delta/retain 1 {:bold true})]
+        (is (= expected (delta/rebase a b :prefer-base-attributes true)))
+        (is (= [] (delta/rebase b a :prefer-base-attributes true)))))
     (testing "retain + retain without priority"
-      (let [a (eager/retain 1 {:color "blue"})
-            b (eager/retain 1 {:bold true :color "red"})]
-        (is (= b (eager/rebase a b)))
-        (is (= a (eager/rebase b a)))))
+      (let [a (delta/retain 1 {:color "blue"})
+            b (delta/retain 1 {:bold true :color "red"})]
+        (is (= b (delta/rebase a b)))
+        (is (= a (delta/rebase b a)))))
     (testing "retain + delete"
-      (let [a (eager/retain 1 {:color "blue"})
-            b (eager/delete 1)]
-        (is (= b (eager/rebase a b)))))
+      (let [a (delta/retain 1 {:color "blue"})
+            b (delta/delete 1)]
+        (is (= b (delta/rebase a b)))))
     (testing "alternating edits"
-      (let [a (->> (eager/retain 2) (eager/insert "si") (eager/delete 5))
-            b (->> (eager/retain 1) (eager/insert "e") (eager/delete 5) (eager/retain 1) (eager/insert "ow"))
-            expected1 (->> (eager/retain 1) (eager/insert "e") (eager/delete 1) (eager/retain 2) (eager/insert "ow"))
-            expected2 (->> (eager/retain 2) (eager/insert "si") (eager/delete 1))]
-        (is (= expected1 (eager/rebase a b)))
-        (is (= expected2 (eager/rebase b a)))))
+      (let [a (->> (delta/retain 2) (delta/insert "si") (delta/delete 5))
+            b (->> (delta/retain 1) (delta/insert "e") (delta/delete 5) (delta/retain 1) (delta/insert "ow"))
+            expected1 (->> (delta/retain 1) (delta/insert "e") (delta/delete 1) (delta/retain 2) (delta/insert "ow"))
+            expected2 (->> (delta/retain 2) (delta/insert "si") (delta/delete 1))]
+        (is (= expected1 (delta/rebase a b)))
+        (is (= expected2 (delta/rebase b a)))))
     (testing "conflicting appends"
-      (let [a (->> (eager/retain 3) (eager/insert "aa"))
-            b (->> (eager/retain 3) (eager/insert "bb"))
-            expected (->> (eager/retain 5) (eager/insert "bb"))]
-        (is (= expected (eager/rebase a b :base-insert-first true)))
-        (is (= a (eager/rebase b a)))))
+      (let [a (->> (delta/retain 3) (delta/insert "aa"))
+            b (->> (delta/retain 3) (delta/insert "bb"))
+            expected (->> (delta/retain 5) (delta/insert "bb"))]
+        (is (= expected (delta/rebase a b :base-insert-first true)))
+        (is (= a (delta/rebase b a)))))
     (testing "prepend + append"
-      (let [a (eager/insert "aa")
-            b (->> (eager/retain 3) (eager/insert "bb"))
-            expected (->> (eager/retain 5) (eager/insert "bb"))]
-        (is (= expected (eager/rebase a b)))
-        (is (= a (eager/rebase b a)))))
+      (let [a (delta/insert "aa")
+            b (->> (delta/retain 3) (delta/insert "bb"))
+            expected (->> (delta/retain 5) (delta/insert "bb"))]
+        (is (= expected (delta/rebase a b)))
+        (is (= a (delta/rebase b a)))))
     (testing "trailing deletes with differing lenghts"
-      (let [a (->> (eager/retain 2) (eager/delete 1))
-            b (eager/delete 3)]
-        (is (= (eager/delete 2) (eager/rebase a b)))
-        (is (= [] (eager/rebase b a)))))))
+      (let [a (->> (delta/retain 2) (delta/delete 1))
+            b (delta/delete 3)]
+        (is (= (delta/delete 2) (delta/rebase a b)))
+        (is (= [] (delta/rebase b a)))))))
 
 (deftest test-rebase-position
   (testing "rebase-position"
     (testing "insert before position"
-      (let [delta (eager/insert "A")]
-        (is (= 3 (eager/rebase-position delta 2)))))
+      (let [delta (delta/insert "A")]
+        (is (= 3 (delta/rebase-position delta 2)))))
     (testing "insert after position"
-      (let [delta (->> (eager/retain 2) (eager/insert "A"))]
-        (is (= 1 (eager/rebase-position delta 1)))))
+      (let [delta (->> (delta/retain 2) (delta/insert "A"))]
+        (is (= 1 (delta/rebase-position delta 1)))))
     (testing "insert at position"
-      (let [delta (->> (eager/retain 2) (eager/insert "A"))]
-        (is (= 2 (eager/rebase-position delta 2 :insert-after-position true)))
-        (is (= 3 (eager/rebase-position delta 2)))))
+      (let [delta (->> (delta/retain 2) (delta/insert "A"))]
+        (is (= 2 (delta/rebase-position delta 2 :insert-after-position true)))
+        (is (= 3 (delta/rebase-position delta 2)))))
     (testing "delete before position"
-      (let [delta (eager/delete 2)]
-        (is (= 2 (eager/rebase-position delta 4)))))
+      (let [delta (delta/delete 2)]
+        (is (= 2 (delta/rebase-position delta 4)))))
     (testing "delete after position"
-      (let [delta (->> (eager/retain 4) (eager/delete 2))]
-        (is (= 2 (eager/rebase-position delta 2)))))
+      (let [delta (->> (delta/retain 4) (delta/delete 2))]
+        (is (= 2 (delta/rebase-position delta 2)))))
     (testing "delete across position"
-      (let [delta (->> (eager/retain 1) (eager/delete 4))]
-        (is (= 1 (eager/rebase-position delta 2)))))
+      (let [delta (->> (delta/retain 1) (delta/delete 4))]
+        (is (= 1 (delta/rebase-position delta 2)))))
     (testing "insert and delete before position"
-      (let [delta (->> (eager/retain 2) (eager/insert "A") (eager/delete 2))]
-        (is (= 3 (eager/rebase-position delta 4)))))
+      (let [delta (->> (delta/retain 2) (delta/insert "A") (delta/delete 2))]
+        (is (= 3 (delta/rebase-position delta 4)))))
     (testing "delete before and across position"
-      (let [delta (->> (eager/delete 1) (eager/retain 1) (eager/delete 4))]
-        (is (= 1 (eager/rebase-position delta 4)))))))
+      (let [delta (->> (delta/delete 1) (delta/retain 1) (delta/delete 4))]
+        (is (= 1 (delta/rebase-position delta 4)))))))
 
 (deftest test-compose
   (testing "insert + insert"
-    (is (= (eager/insert "BA") (eager/comp (eager/insert "A") (eager/insert "B")))))
+    (is (= (delta/insert "BA") (delta/comp (delta/insert "A") (delta/insert "B")))))
   (testing "insert + retain"
-    (let [b (eager/retain 1 {:bold true :color "red" :font nil})
-          expected (eager/insert "A" {:bold true :color "red"})]
-      (is (= expected (eager/comp (eager/insert "A") b)))))
+    (let [b (delta/retain 1 {:bold true :color "red" :font nil})
+          expected (delta/insert "A" {:bold true :color "red"})]
+      (is (= expected (delta/comp (delta/insert "A") b)))))
   (testing "insert + delete"
-    (is (= [] (eager/comp (eager/insert "A") (eager/delete 1)))))
+    (is (= [] (delta/comp (delta/insert "A") (delta/delete 1)))))
   (testing "delete + insert"
-    (let [expected (->> (eager/insert "B") (eager/delete 1))]
-      (is (= expected (eager/comp (eager/delete 1) (eager/insert "B"))))))
+    (let [expected (->> (delta/insert "B") (delta/delete 1))]
+      (is (= expected (delta/comp (delta/delete 1) (delta/insert "B"))))))
   (testing "delete + retain"
-    (let [b (eager/retain 1 {:bold true :color "red"})
-          expected (->> (eager/delete 1) (eager/retain 1 {:bold true :color "red"}))]
-      (is (= expected (eager/comp (eager/delete 1) b)))))
+    (let [b (delta/retain 1 {:bold true :color "red"})
+          expected (->> (delta/delete 1) (delta/retain 1 {:bold true :color "red"}))]
+      (is (= expected (delta/comp (delta/delete 1) b)))))
   (testing "delete + delete"
-    (is (= (eager/delete 2) (eager/comp (eager/delete 1) (eager/delete 1)))))
+    (is (= (delta/delete 2) (delta/comp (delta/delete 1) (delta/delete 1)))))
   (testing "retain + insert"
-    (let [a (eager/retain 1 {:color "blue"})
-          expected (->> (eager/insert "B") (eager/retain 1 {:color "blue"}))]
-      (is (= expected (eager/comp a (eager/insert "B"))))))
+    (let [a (delta/retain 1 {:color "blue"})
+          expected (->> (delta/insert "B") (delta/retain 1 {:color "blue"}))]
+      (is (= expected (delta/comp a (delta/insert "B"))))))
   (testing "retain + retain"
-    (let [a (eager/retain 1 {:color "blue"})
-          b (eager/retain 1 {:bold true :color "red" :font nil})]
-      (is (= b (eager/comp a b)))))
+    (let [a (delta/retain 1 {:color "blue"})
+          b (delta/retain 1 {:bold true :color "red" :font nil})]
+      (is (= b (delta/comp a b)))))
   (testing "retain + delete"
-    (let [a (eager/retain 1 {:color "blue"})]
-      (is (= (eager/delete 1) (eager/comp a (eager/delete 1))))))
+    (let [a (delta/retain 1 {:color "blue"})]
+      (is (= (delta/delete 1) (delta/comp a (delta/delete 1))))))
   (testing "insert in middle of text"
-    (let [b (->> (eager/retain 3) (eager/insert "X"))]
-      (is (= (eager/insert "HelXlo") (eager/comp (eager/insert "Hello") b)))))
+    (let [b (->> (delta/retain 3) (delta/insert "X"))]
+      (is (= (delta/insert "HelXlo") (delta/comp (delta/insert "Hello") b)))))
   (testing "insert and delete ordering"
-    (let [insert-first (->> (eager/retain 3) (eager/insert "X") (eager/delete 1))
-          delete-first (->> (eager/retain 3) (eager/delete 1) (eager/insert "X"))]
-      (is (= (eager/insert "HelXo") (eager/comp (eager/insert "Hello") insert-first)))
-      (is (= (eager/insert "HelXo") (eager/comp (eager/insert "Hello") delete-first)))))
+    (let [insert-first (->> (delta/retain 3) (delta/insert "X") (delta/delete 1))
+          delete-first (->> (delta/retain 3) (delta/delete 1) (delta/insert "X"))]
+      (is (= (delta/insert "HelXo") (delta/comp (delta/insert "Hello") insert-first)))
+      (is (= (delta/insert "HelXo") (delta/comp (delta/insert "Hello") delete-first)))))
   (testing "insert embed"
-    (let [a (eager/insert 1 {:src "http://quilljs.com/image.png"})
-          b (eager/retain 1 {:alt "logo"})
-          expected (eager/insert 1 {:src "http://quilljs.com/image.png" :alt "logo"})]))
+    (let [a (delta/insert 1 {:src "http://quilljs.com/image.png"})
+          b (delta/retain 1 {:alt "logo"})
+          expected (delta/insert 1 {:src "http://quilljs.com/image.png" :alt "logo"})]))
   (testing "delete entire text"
-    (let [a (->> (eager/retain 4) (eager/insert "Hello"))]
-      (is (= (eager/delete 4) (eager/comp a (eager/delete 9))))))
+    (let [a (->> (delta/retain 4) (delta/insert "Hello"))]
+      (is (= (delta/delete 4) (delta/comp a (delta/delete 9))))))
   (testing "retain more than length of text"
-    (let [a (eager/insert "Hello")]
-      (is (= a (eager/comp a (eager/retain 10))))))
+    (let [a (delta/insert "Hello")]
+      (is (= a (delta/comp a (delta/retain 10))))))
   (testing "retain empty embed"
-    (let [a (eager/insert 1)]
-      (is (= a (eager/comp a (eager/retain 1))))))
+    (let [a (delta/insert 1)]
+      (is (= a (delta/comp a (delta/retain 1))))))
   (testing "remove all attributes"
-    (let [a (eager/insert "A" {:bold true})
-          b (eager/retain 1 {:bold nil})]
-      (is (= (eager/insert "A") (eager/comp a b)))))
+    (let [a (delta/insert "A" {:bold true})
+          b (delta/retain 1 {:bold nil})]
+      (is (= (delta/insert "A") (delta/comp a b)))))
   (testing "remove all embed attributes"
-    (let [a (eager/insert 2 {:bold true})
-          b (eager/retain 1 {:bold nil})]
-      (is (= (eager/insert 2) (eager/comp a b))))))
+    (let [a (delta/insert 2 {:bold true})
+          b (delta/retain 1 {:bold nil})]
+      (is (= (delta/insert 2) (delta/comp a b))))))
 
 (deftest test-diff
-  (let [character-set @#'eager/character-set
-        embed-set @#'eager/embed-set]
+  (let [character-set @#'delta/character-set
+        embed-set @#'delta/embed-set]
     (testing "character-set"
       (testing "one string"
         (is (= #{\a \b \c} (character-set ["abc"]))))
@@ -532,7 +502,7 @@
         (is (= #{{:img "gna"}}
                (embed-set ["conch" {:img "gna"} "flub"])))))
     (testing "embed-mapping"
-      (let [embed-mapping @#'eager/embed-mapping
+      (let [embed-mapping @#'delta/embed-mapping
             doc ["flub"
                  {:img "ya"}
                  {:video "ya"}
@@ -550,7 +520,7 @@
         (testing "assigns a character to every embed"
           (is (every? some? (map mapping #{{:img "ya"} {:video "ya"}})))))))
   (testing "stringify"
-    (let [stringify @#'eager/stringify
+    (let [stringify @#'delta/stringify
           mapping {{:img "bla"} "_"}]
       (testing "one string"
         (is (= "abc" (stringify mapping ["abc"]))))
@@ -564,49 +534,49 @@
                (stringify mapping ["conch" {:img "bla"} "flub"]))))))
   (testing "diff"
     (testing "insert"
-      (is (= (->> (eager/retain 1) (eager/insert "B"))
-             (eager/diff (eager/insert "A") (eager/insert "AB")))))
+      (is (= (->> (delta/retain 1) (delta/insert "B"))
+             (delta/diff (delta/insert "A") (delta/insert "AB")))))
     (testing "delete"
-      (is (= (->> (eager/retain 1) (eager/delete 1))
-             (eager/diff (eager/insert "AB") (eager/insert "A")))))
+      (is (= (->> (delta/retain 1) (delta/delete 1))
+             (delta/diff (delta/insert "AB") (delta/insert "A")))))
     (testing "retain"
       (is (= []
-             (eager/diff (eager/insert "A") (eager/insert "A")))))
+             (delta/diff (delta/insert "A") (delta/insert "A")))))
     (testing "format"
-      (is (= (eager/retain 1 {:bold true})
-             (eager/diff (eager/insert "A") (eager/insert "A" {:bold true})))))
+      (is (= (delta/retain 1 {:bold true})
+             (delta/diff (delta/insert "A") (delta/insert "A" {:bold true})))))
     (testing "object attributes"
-      (is (= (eager/retain 1 {:font {:family "Helvetica" :size "16px"}})
-             (eager/diff (eager/insert "A" {:font {:family "Helvetica" :size "15px"}})
-                         (eager/insert "A" {:font {:family "Helvetica" :size "16px"}})))))
+      (is (= (delta/retain 1 {:font {:family "Helvetica" :size "16px"}})
+             (delta/diff (delta/insert "A" {:font {:family "Helvetica" :size "15px"}})
+                         (delta/insert "A" {:font {:family "Helvetica" :size "16px"}})))))
     (testing "embed integer match"
-      (is (empty (eager/diff (eager/insert 1) (eager/insert 1)))))
+      (is (empty (delta/diff (delta/insert 1) (delta/insert 1)))))
     (testing "embed integer mismatch"
-      (is (= (->> (eager/delete 1) (eager/insert 2))
-             (eager/diff (eager/insert 1) (eager/insert 2)))))
+      (is (= (->> (delta/delete 1) (delta/insert 2))
+             (delta/diff (delta/insert 1) (delta/insert 2)))))
     (testing "embed object match"
-      (is (empty (eager/diff (eager/insert {:image "http://quilljs.com"})
-                             (eager/insert {:image "http://quilljs.com"})))))
+      (is (empty (delta/diff (delta/insert {:image "http://quilljs.com"})
+                             (delta/insert {:image "http://quilljs.com"})))))
     (testing "embed object mismatch"
-      (is (= (->> (eager/insert {:image "http://github.com"})
-                  (eager/delete 1))
-             (eager/diff (eager/insert {:image "http://quilljs.com"})
-                         (eager/insert {:image "http://github.com"})))))
+      (is (= (->> (delta/insert {:image "http://github.com"})
+                  (delta/delete 1))
+             (delta/diff (delta/insert {:image "http://quilljs.com"})
+                         (delta/insert {:image "http://github.com"})))))
     (testing "inconvenient indexes"
-      (is (= (->> (eager/insert "Good" {:bold true})
-                  (eager/delete 2)
-                  (eager/retain 1 {:italic true, :color nil})
-                  (eager/delete 3)
-                  (eager/insert "og" {:italic true}))
-             (eager/diff
-               (->> (eager/insert "Bad" {:color "red"})
-                    (eager/insert "cat" {:color "blue"}))
-               (->> (eager/insert "Good" {:bold true})
-                    (eager/insert "dog" {:italic true}))))))
+      (is (= (->> (delta/insert "Good" {:bold true})
+                  (delta/delete 2)
+                  (delta/retain 1 {:italic true, :color nil})
+                  (delta/delete 3)
+                  (delta/insert "og" {:italic true}))
+             (delta/diff
+               (->> (delta/insert "Bad" {:color "red"})
+                    (delta/insert "cat" {:color "blue"}))
+               (->> (delta/insert "Good" {:bold true})
+                    (delta/insert "dog" {:italic true}))))))
     (testing "same document"
-      (let [a (->> (eager/insert "A") (eager/insert "B" {:bold true}))]
-        (is (empty? (eager/diff a a)))))
+      (let [a (->> (delta/insert "A") (delta/insert "B" {:bold true}))]
+        (is (empty? (delta/diff a a)))))
     (testing "non-document"
       (is (thrown-with-msg? #?(:clj Exception :cljs js/Error) #"diff called on non-document"
-                            (eager/diff (eager/insert "Test")
-                                        (eager/delete 4)))))))
+                            (delta/diff (delta/insert "Test")
+                                        (delta/delete 4)))))))
