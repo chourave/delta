@@ -32,6 +32,7 @@
                          (:test
                            [plumula/mimolette "0.2.0"])))
 
+(require '[adzerk.boot-cljs-repl :refer [start-repl]])
 (task-options!
   pom #(assoc % :description "A library for representing documents and changes to documents."
                 :url "https://github.com/plumula/delta"
