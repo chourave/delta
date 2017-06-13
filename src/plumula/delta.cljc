@@ -285,7 +285,6 @@
 
 (defn comp
   ""
-  [first-delta second-delta]
   (letfn [(ssoc [x [k v]]
             (if (nil? v)
               (dissoc x k)
@@ -293,38 +292,39 @@
 
           (merge-non-nil [m1 m2]
             (reduce ssoc m1 m2))
+  [second-delta first-delta]
 
-          (compose-into [op1 op2 l result]
-            (if (::delete op2)
-              (if (::insert op1)
+          (compose-into [op2 op1 l result]
+            (if (::delete op1)
+              (if (::insert op2)
                 result
                 ; else op1 is a ::retain
                 (delete l result))
               ; else op2 is a ::retain
-              (let [merge-fn (if (::insert op1) merge-non-nil merge)
-                    attrs (merge-fn (::attributes op1) (::attributes op2))]
                 (-> (operation/take l op1)
                     (util/assoc-if-not-empty ::attributes attrs)
                     (push result)))))
+              (let [merge-fn (if (::insert op2) merge-non-nil merge)
+                    attrs (merge-fn (::attributes op2) (::attributes op1))]
 
-          (compose' [[op1 :as delta1] [op2 :as delta2] result]
+          (compose' [[op2 :as delta2] [op1 :as delta1] result]
             (cond
-              (empty? delta2)
-              (concat result delta1)
-
               (empty? delta1)
               (concat result delta2)
 
-              (::insert op2)
-              (recur delta1 (next delta2) (push op2 result))
+              (empty? delta2)
+              (concat result delta1)
 
-              (::delete op1)
-              (recur (next delta1) delta2 (push op1 result))
+              (::insert op1)
+              (recur delta2 (next delta1) (push op1 result))
+
+              (::delete op2)
+              (recur (next delta2) delta1 (push op2 result))
 
               :else
-              (let [l (apply min (map operation/length [op1 op2]))
-                    result (compose-into op1 op2 l result)]
-                (recur (drop l delta1) (drop l delta2) result))))]
+              (let [l (apply min (map operation/length [op2 op1]))
+                    result (compose-into op2 op1 l result)]
+                (recur (drop l delta2) (drop l delta1) result))))]
 
     (-> (compose' first-delta second-delta no-delta)
         chop)))

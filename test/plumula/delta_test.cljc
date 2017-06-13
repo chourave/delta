@@ -417,64 +417,64 @@
       (let [delta (->> (delta/delete 1) (delta/retain 1) (delta/delete 4))]
         (is (= 1 (delta/rebase-position delta 4)))))))
 
-(deftest test-compose
+(deftest test-comp
   (testing "insert + insert"
-    (is (= (delta/insert "BA") (delta/comp (delta/insert "A") (delta/insert "B")))))
+    (is (= (delta/insert "BA") (delta/comp (delta/insert "B") (delta/insert "A")))))
   (testing "insert + retain"
     (let [b (delta/retain 1 {:bold true :color "red" :font nil})
           expected (delta/insert "A" {:bold true :color "red"})]
-      (is (= expected (delta/comp (delta/insert "A") b)))))
+      (is (= expected (delta/comp b (delta/insert "A"))))))
   (testing "insert + delete"
-    (is (= [] (delta/comp (delta/insert "A") (delta/delete 1)))))
+    (is (= [] (delta/comp (delta/delete 1) (delta/insert "A")))))
   (testing "delete + insert"
     (let [expected (->> (delta/insert "B") (delta/delete 1))]
-      (is (= expected (delta/comp (delta/delete 1) (delta/insert "B"))))))
+      (is (= expected (delta/comp (delta/insert "B") (delta/delete 1))))))
   (testing "delete + retain"
     (let [b (delta/retain 1 {:bold true :color "red"})
           expected (->> (delta/delete 1) (delta/retain 1 {:bold true :color "red"}))]
-      (is (= expected (delta/comp (delta/delete 1) b)))))
+      (is (= expected (delta/comp b (delta/delete 1))))))
   (testing "delete + delete"
     (is (= (delta/delete 2) (delta/comp (delta/delete 1) (delta/delete 1)))))
   (testing "retain + insert"
     (let [a (delta/retain 1 {:color "blue"})
           expected (->> (delta/insert "B") (delta/retain 1 {:color "blue"}))]
-      (is (= expected (delta/comp a (delta/insert "B"))))))
+      (is (= expected (delta/comp (delta/insert "B") a)))))
   (testing "retain + retain"
     (let [a (delta/retain 1 {:color "blue"})
           b (delta/retain 1 {:bold true :color "red" :font nil})]
-      (is (= b (delta/comp a b)))))
+      (is (= b (delta/comp b a)))))
   (testing "retain + delete"
     (let [a (delta/retain 1 {:color "blue"})]
-      (is (= (delta/delete 1) (delta/comp a (delta/delete 1))))))
+      (is (= (delta/delete 1) (delta/comp (delta/delete 1) a)))))
   (testing "insert in middle of text"
     (let [b (->> (delta/retain 3) (delta/insert "X"))]
-      (is (= (delta/insert "HelXlo") (delta/comp (delta/insert "Hello") b)))))
+      (is (= (delta/insert "HelXlo") (delta/comp b (delta/insert "Hello"))))))
   (testing "insert and delete ordering"
     (let [insert-first (->> (delta/retain 3) (delta/insert "X") (delta/delete 1))
           delete-first (->> (delta/retain 3) (delta/delete 1) (delta/insert "X"))]
-      (is (= (delta/insert "HelXo") (delta/comp (delta/insert "Hello") insert-first)))
-      (is (= (delta/insert "HelXo") (delta/comp (delta/insert "Hello") delete-first)))))
+      (is (= (delta/insert "HelXo") (delta/comp insert-first (delta/insert "Hello"))))
+      (is (= (delta/insert "HelXo") (delta/comp delete-first (delta/insert "Hello"))))))
   (testing "insert embed"
     (let [a (delta/insert 1 {:src "http://quilljs.com/image.png"})
           b (delta/retain 1 {:alt "logo"})
           expected (delta/insert 1 {:src "http://quilljs.com/image.png" :alt "logo"})]))
   (testing "delete entire text"
     (let [a (->> (delta/retain 4) (delta/insert "Hello"))]
-      (is (= (delta/delete 4) (delta/comp a (delta/delete 9))))))
+      (is (= (delta/delete 4) (delta/comp (delta/delete 9) a)))))
   (testing "retain more than length of text"
     (let [a (delta/insert "Hello")]
-      (is (= a (delta/comp a (delta/retain 10))))))
+      (is (= a (delta/comp (delta/retain 10) a)))))
   (testing "retain empty embed"
     (let [a (delta/insert 1)]
-      (is (= a (delta/comp a (delta/retain 1))))))
+      (is (= a (delta/comp (delta/retain 1) a)))))
   (testing "remove all attributes"
     (let [a (delta/insert "A" {:bold true})
           b (delta/retain 1 {:bold nil})]
-      (is (= (delta/insert "A") (delta/comp a b)))))
+      (is (= (delta/insert "A") (delta/comp b a)))))
   (testing "remove all embed attributes"
     (let [a (delta/insert 2 {:bold true})
           b (delta/retain 1 {:bold nil})]
-      (is (= (delta/insert 2) (delta/comp a b))))))
+      (is (= (delta/insert 2) (delta/comp b a))))))
 
 (deftest test-diff
   (let [character-set @#'delta/character-set
