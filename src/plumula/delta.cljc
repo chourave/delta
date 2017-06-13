@@ -26,7 +26,8 @@
             [plumula.delta.operation :as operation]
             [plumula.delta.util :as util]
             [plumula.diff :as diff])
-  (:refer-clojure :exclude [concat comp drop take]))
+  (:refer-clojure :exclude [concat comp drop take])
+  #?(:clj (:import (java.util.regex Pattern))))
 
 (def no-delta
   "A delta that does nothing when applied to a text, and that is
@@ -421,20 +422,32 @@
             nil
             (chop result)))))))
 
+(defn- regex->str
+  "Return the string representation of a `regex`, so that calling `re-pattern`
+  on that string yields a regex equivalent to the original one. If the argument
+  was a string, returns it unchanged.
+  "
+  [^#?(:clj Pattern :cljs js/RegExp) regex]
+  (if (string? regex)
+    regex
+    (#?(:clj .pattern :cljs .-source) regex)))
+
 (defn- split-lines
   ""
-  [separator terminator]
-  (fn [{text ::insert :as op}]
-    (if-not (string? text)
-      [op]
-      (let [needs-trailer (re-find terminator text)]
-        (cond-> text
-                needs-trailer (str ".")
-                :always (string/split separator)
-                :always (->> (interpose ::newline)
-                             (remove #{""}))
-                needs-trailer drop-last
-                :always (->> (map (partial assoc op ::insert))))))))
+  [separator]
+  (let [terminator (re-pattern (str (regex->str separator) "$"))
+        separator (re-pattern separator)]
+    (fn [{text ::insert :as operation}]
+      (if-not (string? text)
+        [operation]
+        (let [needs-trailer (re-find terminator text)]
+          (cond-> text
+                  needs-trailer (str ".")
+                  :always (string/split separator)
+                  :always (->> (interpose ::newline)
+                               (remove #{""}))
+                  needs-trailer drop-last
+                  :always (->> (map (partial assoc operation ::insert)))))))))
 
 (defn- build-lines [xf]
   ""
@@ -470,6 +483,6 @@
    (sequence
      (core/comp
        (take-while ::insert)
-       (mapcat (split-lines (re-pattern newline) (re-pattern (str newline "$"))))
+       (mapcat (split-lines newline))
        build-lines)
      delta)))

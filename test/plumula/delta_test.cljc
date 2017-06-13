@@ -158,6 +158,17 @@
               expected (->> (delta/insert "Test") (delta/insert "!" {:bold true}) (delta/insert "\n"))]
           (is (= expected (delta/concat d1 d2 d3)))))))
 
+  (testing "regex->str"
+    (let [regex->str @#'delta/regex->str]
+    (testing "with regex"
+      (let [string (regex->str #"\n")]
+        (is (string? string))
+        (is (= (str #"\n") (str (re-pattern string))))))
+    (testing "with string"
+      (let [string (regex->str "\\n")]
+        (is (string? string))
+        (is (= (str #"\n") (str (re-pattern string))))))))
+
   (testing "chop"
     (testing "retain"
       (let [delta (->> (delta/insert "Test") (delta/retain 4))
@@ -171,7 +182,7 @@
         (is (= delta (delta/chop delta))))))
 
   (testing "split-lines"
-    (let [split-at-newlines (@#'delta/split-lines #"\n" #"\n$")]
+    (let [split-at-newlines (@#'delta/split-lines #"\n")]
       (testing "no newline"
         (is (= [{::delta/insert "bla"}] (split-at-newlines {::delta/insert "bla"}))))
       (testing "no newline, keep attributes"
