@@ -124,7 +124,7 @@
 (defn- with-attributes
   ""
   [op attributes]
-  (util/assoc-if-not-empty op :plumula.delta/attributes attributes))
+  (util/assoc-unless empty? operation :plumula.delta/attributes attributes))
 
 (defn insert
   "Returns a map representing an ‘insert `text`’ or ‘insert `embed`’ operation.

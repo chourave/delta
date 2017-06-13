@@ -62,7 +62,7 @@
   (letfn [(merge-using [key merge delta]
             (let [merged-value (apply merge (map key [(last delta) new-op]))
                   attr (::attributes new-op)
-                  new-op (-> {key merged-value} (util/assoc-if-not-empty ::attributes attr))]
+                  new-op(util/assoc-unless empty? {key merged-value} ::attributes attr)]
               (-> delta without-last (conj new-op))))
 
           (push-into [new-op delta]
@@ -285,14 +285,9 @@
 
 (defn comp
   ""
-  (letfn [(ssoc [x [k v]]
-            (if (nil? v)
-              (dissoc x k)
-              (assoc x k v)))
-
-          (merge-non-nil [m1 m2]
-            (reduce ssoc m1 m2))
   [second-delta first-delta]
+  (letfn [(merge-non-nil [attr2 attr1]
+            (reduce (fn [x [k v]] (util/assoc-unless nil? x k v)) attr2 attr1))
 
           (compose-into [op2 op1 l result]
             (if (::delete op1)
@@ -301,11 +296,11 @@
                 ; else op1 is a ::retain
                 (delete l result))
               ; else op2 is a ::retain
-                (-> (operation/take l op1)
-                    (util/assoc-if-not-empty ::attributes attrs)
-                    (push result)))))
               (let [merge-fn (if (::insert op2) merge-non-nil merge)
                     attrs (merge-fn (::attributes op2) (::attributes op1))]
+                (as-> (operation/take l op2) op
+                    (util/assoc-unless empty? op ::attributes attrs)
+                    (push op result)))))
 
           (compose' [[op2 :as delta2] [op1 :as delta1] result]
             (cond
@@ -447,10 +442,10 @@
     (letfn [(xf-line! [result attributes]
               (let [finished @line]
                 (vreset! line no-delta)
-                (-> {}
-                    (util/assoc-if-not-empty ::line finished)
-                    (util/assoc-if-not-empty ::attributes attributes)
-                    (->> (xf result)))))
+                (as-> {} op
+                    (util/assoc-unless empty? op ::line finished)
+                    (util/assoc-unless empty? op ::attributes attributes)
+                    (xf result op))))
             (flush! [result]
               (-> result (xf-line! nil) unreduced))
             (reducer

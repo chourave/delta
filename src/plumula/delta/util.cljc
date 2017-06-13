@@ -24,19 +24,19 @@
   (:require [clojure.core :as core])
   (:refer-clojure :exclude [keyword-identical?]))
 
-(defn assoc-if-not-empty
-  "If `v` is empty, returns `x` with `k` `dissoc`iated from it.
+(defn assoc-unless
+  "If `v` is `p?`, returns `x` with `k` `dissoc`iated from it.
    Otherwise, returns `x` with `k` `assoc`iated to `v`.
 
    Examples
-   (assoc-if-not-empty {::retain 1 ::attributes {:bold true}} ::attributes {})
+   (assoc-unless empty? {::retain 1 ::attributes {:bold true}} ::attributes {})
    ; returns {::retain 1}
 
-   (assoc-if-not-empty {::retain 1} ::attributes {:bold true})
+   (assoc-unless empty? {::retain 1} ::attributes {:bold true})
    ; returns {::retain 1 ::atributes {:bold true}}
    "
-  [x k v]
-  (if (empty? v)
+  [p? x k v]
+  (if (p? v)
     (dissoc x k)
     (assoc x k v)))
 
