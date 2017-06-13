@@ -43,7 +43,7 @@
   [])
 
 (defn- without-last
-  ""
+  "Returns `delta` without its last operation."
   [delta]
   (subvec delta 0 (dec (count delta))))
 
@@ -210,7 +210,11 @@
         :else (cons (operation/drop' n op) tail)))))
 
 (defn slice
-  ""
+  "Returns a delta starting at the `start`th and ending at the `end`th character
+  of `delta`. The character indices are 0-based. `start` is taken inclusively
+  and defaults to 0, `end` is taken exclusively and defaults to the length of
+  `delta`.
+  "
   ([delta] delta)
   ([start delta] (drop start delta))
   ([start end delta] (->> delta (drop start) (take (- end start)))))
@@ -232,7 +236,17 @@
            deltas)))
 
 (defn rebase
-  ""
+  "Returns a version of `delta` that has been rewritten to apply on top of the
+  `base` delta.
+
+  Keyword options:
+  - `:base-insert-first`: determines what happens if `base` and `delta` insert
+  at the same position. If true, `base` inserts towards the beginning of the
+  text and `delta` towards the end. If false, the roles are reversed.
+  - `:prefer-base-attributes`: determines what happens if `base` and `delta` try
+  to modify the same attribute at a given position. If true, `base`’s version
+  wins. If false, `delta`’s version wins.
+  "
   [base delta & {:keys [base-insert-first prefer-base-attributes]}]
   (let [rebase-attrs (if-not prefer-base-attributes
                        (fn [base-op op] (::attributes op))
@@ -265,7 +279,17 @@
               :else (retain l (rebase-attrs base-op op) result))))))))
 
 (defn rebase-position
-  ""
+  "Returns a `position` that has been offset to take into account the `base`
+  delta.
+
+  Keyword options:
+  - `:insert-after-position`: determines what happens if `base` inserts
+  characters right at the `position`. If false, the insertions are considered to
+  have happened before the `position`, and it is shifted towards the end of the
+  text by a corresponding number of characters. If true, the characters are
+  considered to have been inserted after the `position`, and the it is not
+  shifted.
+  "
   [base position & {:keys [insert-after-position]}]
   (loop [[op & tail :as base] base
          position position
@@ -285,7 +309,9 @@
       (recur tail position (+ offset (operation/length op))))))
 
 (defn comp
-  ""
+  "Returns a delta such that applying that delta has the same effect as applying
+  in sequence `first-delta` and then `second-delta`.
+  "
   [second-delta first-delta]
   (letfn [(merge-non-nil [attr2 attr1]
             (reduce (fn [x [k v]] (util/assoc-unless nil? x k v)) attr2 attr1))
@@ -326,7 +352,11 @@
         chop)))
 
 (defn- character-set
-  ""
+  "Returns a set of all the characters used in text in the `inserts` passed as
+  a parameter. `inserts` should be a seq consisting of strings and other values,
+  and is typically obtained by mapping ::insert over a delta. Only the text from
+  text insert operations is used. Embed insert operations are ignored.
+  "
   [inserts]
   (->> inserts
        (eduction (filter string?))
@@ -334,14 +364,19 @@
        set))
 
 (defn- embed-set
-  ""
+  "Returns a set of all the embeds used in the `inserts` passed as a parameter.
+  `inserts` should be a seq consisting of strings and other values, and is
+  typically obtained by mapping ::insert over a delta. Only the insert embed
+  operations are used. Text insert operations are ignored.
+  "
   [inserts]
   (->> inserts
        (eduction (remove string?))
        set))
 
 (defn- available-characters
-  ""
+  "Returns a lazy sequence of strings, each string consisting of a single
+  non-control character that is not in `used-characters`."
   [used-characters]
   (->> (range)
        (drop 32)
@@ -352,7 +387,12 @@
            (map str)))))
 
 (defn- embed-mapping
-  ""
+  "Given `inserts`, a seq consisting of strings and other values, typically
+  obtained by mapping ::insert over a delta, returns a map, where the keys are
+  the embeds used in the argument deltas, and the values are strings consisting
+  of a distinct single non-control character each, that does not appear anywhere
+  in the texts of the insert operations of the delta.
+  "
   [inserts]
   (let [chars (character-set inserts)
         embeds (embed-set inserts)
@@ -360,14 +400,23 @@
     (zipmap embeds embed-chars)))
 
 (defn- stringify
-  ""
+  "Given a `mapping` of embeds to characters, and `inserts`, a seq consisting of
+  strings(representing text) and other values(representing embeds), typically
+  obtained by mapping ::insert over a delta, return a string representing the
+  concatenation of those texts and embeds, where each embed has been replaced
+  by its corresponding value from the `mapping`.
+  "
   [mapping inserts]
   (->> inserts
        (eduction (mapcat #(if (string? %) % (mapping %))))
        (apply str)))
 
-(defn- diff-equal
-  ""
+(defn- diff-attributes
+  "Produce `::retain` operations representing the difference in attributes for
+  the first `length` characters of `delta` and the `other` delta. Rturns a
+  3-tuple consisting of the remaining `delta`, the remaining `other` delta and
+  a seq of `::retain` operations.
+  "
   [length delta other result]
   (if (zero? length)
     [delta other result]
@@ -384,7 +433,11 @@
                      result)))))
 
 (defn diff
-  ""
+  "Given two delta, returns a delta that represents the difference to go from
+  `delta` to `other`.
+
+  Keyword options are passed on to `plumula.diff/diff`.
+  "
   [delta other & opts]
   (cond
     (not-every? ::insert (core/concat delta other))
@@ -416,7 +469,7 @@
                    (delete op-length result))
 
             ::diff/equal
-            (let [[delta other result] (diff-equal op-length delta other result)]
+            (let [[delta other result] (diff-attributes op-length delta other result)]
               (recur d-rest delta other result))
 
             nil
@@ -433,7 +486,15 @@
     (#?(:clj .pattern :cljs .-source) regex)))
 
 (defn- split-lines
-  ""
+  "Returns a function that splits an insert `operation` into lines and newlines.
+  In more detail:
+  - the `separator` should be a regular expression identifying line ends
+  - if the input `operation` was an embed, the result will be a single-element
+    list with the unchanged insert embed operation
+  - lines in the output are represented by simple insert text operations with
+    the part of the text matched by `separator` stripped of
+  - newlines in the output are represented by insert operations with the
+    `::newline` keyword as a value"
   [separator]
   (let [terminator (re-pattern (str (regex->str separator) "$"))
         separator (re-pattern separator)]
@@ -450,7 +511,11 @@
                   :always (->> (map (partial assoc operation ::insert)))))))))
 
 (defn- build-lines [xf]
-  ""
+  "A transducer that packs each sequence of (possibly zero) consecutive
+  non-`::newline` `::insert`s followed by a `::newline` insert into a map, with
+  the `::line` key holding a seq of the non-`::newline` inserts and the
+  `::attributes` key holding the attributes of the `::newline` insert.
+  "
   (let [line (volatile! no-delta)]
     (letfn [(xf-line! [result attributes]
               (let [finished @line]
@@ -476,7 +541,16 @@
       reducer)))
 
 (defn lines
-  ""
+  "Returns a lazy sequence representing the `delta` split up into lines. Each
+  line is represented by a map with two keys:
+  - `::line` holds a delta representing the line
+  - ``::attributes` holds a map of attributes that apply to the whole line
+
+  Lines are split up by `newline`, which should be a regex and  defaults to
+  #\"\\n\". It is also okay to use a string, but it will still be interpreted as
+  a regular expression, so you may need to escape it if it contains control
+  characters.
+  "
   ([delta]
    (lines "\n" delta))
   ([newline delta]

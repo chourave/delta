@@ -122,8 +122,8 @@
      {:plumula.delta/delete length})))
 
 (defn- with-attributes
-  ""
-  [op attributes]
+  "Returns `operation` with its attributes replaced with `attributes`."
+  [operation attributes]
   (util/assoc-unless empty? operation :plumula.delta/attributes attributes))
 
 (defn insert
@@ -157,7 +157,9 @@
          (with-attributes attributes)))))
 
 (defn attribute-diff
-  ""
+  "Returns a map representing the difference between the `attributes` and the
+  `other-attributes`.
+  "
   [attributes other-attributes]
   (into {}
         (comp
