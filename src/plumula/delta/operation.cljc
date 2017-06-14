@@ -89,7 +89,7 @@
   [n op]
   (if (>= n (length op))
     op
-    (when n
+    (when (pos? n)
       (take' n op))))
 
 (defn drop'
@@ -104,7 +104,7 @@
 (defn drop
   "Returns an operation without the n first characters of op."
   [n op]
-  (if-not n
+  (if-not (pos? n)
     op
     (when (< n (length op))
       (drop' n op))))
