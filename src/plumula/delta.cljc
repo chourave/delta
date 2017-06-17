@@ -108,9 +108,9 @@
   ; returns [{::delta/delete 7}]
   "
   ([length]
-    (delete length no-delta))
+   (delete length no-delta))
   ([length delta]
-    (push (operation/delete length) delta)))
+   (push (operation/delete length) delta)))
 
 (defn insert
   "Returns a collection representing `delta` with an ‘insert `text`’ or ‘insert

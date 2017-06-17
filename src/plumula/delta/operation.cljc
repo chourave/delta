@@ -165,4 +165,4 @@
         (comp
           (remove #(= (% attributes) (% other-attributes)))
           (map (fn [k] [k (k other-attributes)])))
-        (-> (into (set (keys attributes)) (keys other-attributes)))))
+        (into (set (keys attributes)) (keys other-attributes))))
