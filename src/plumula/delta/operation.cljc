@@ -58,7 +58,7 @@
   (operation/length (operation/insert \"hi\"))
   ; returns 2
   "
-  [op]
+  ^long [op]
   (or
     (:plumula.delta/delete op)
     (:plumula.delta/retain op)
