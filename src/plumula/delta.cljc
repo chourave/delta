@@ -29,6 +29,9 @@
   (:refer-clojure :exclude [concat comp drop take])
   #?(:clj (:import (java.util.regex Pattern))))
 
+#?(:clj  (set! *warn-on-reflection* true)
+   :cljs (set! *warn-on-infer* true))
+
 (def no-delta
   "A delta that does nothing when applied to a text, and that is
   invariant under `drop`.

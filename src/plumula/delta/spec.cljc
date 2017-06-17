@@ -26,6 +26,9 @@
             [plumula.delta :as delta]
             [plumula.delta.operation :as operation]))
 
+#?(:clj  (set! *warn-on-reflection* true)
+   :cljs (set! *warn-on-infer* true))
+
 (def text (s/and string? #(-> % count pos?)))
 (def embed (s/map-of keyword? any? :kind #(= (count %) 1)))
 (def attributes (s/map-of keyword? any?))

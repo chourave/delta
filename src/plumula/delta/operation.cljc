@@ -24,6 +24,9 @@
   (:require [plumula.delta.util :as util])
   (:refer-clojure :exclude [drop take type]))
 
+#?(:clj  (set! *warn-on-reflection* true)
+   :cljs (set! *warn-on-infer* true))
+
 (def ^:private infinity
   "Positive infinity.
   "

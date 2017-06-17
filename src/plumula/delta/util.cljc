@@ -24,6 +24,9 @@
   (:require [clojure.core :as core])
   (:refer-clojure :exclude [keyword-identical?]))
 
+#?(:clj  (set! *warn-on-reflection* true)
+   :cljs (set! *warn-on-infer* true))
+
 (defn assoc-unless
   "If `v` is `p?`, returns `x` with `k` `dissoc`iated from it.
    Otherwise, returns `x` with `k` `assoc`iated to `v`.
