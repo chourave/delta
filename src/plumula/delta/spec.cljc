@@ -26,14 +26,14 @@
             [plumula.delta :as delta]
             [plumula.delta.operation :as operation]))
 
-(s/def ::delta/text (s/and string? #(-> % count pos?)))
-(s/def ::delta/embed (s/map-of keyword? any? :kind #(= (count %) 1)))
+(def text (s/and string? #(-> % count pos?)))
+(def embed (s/map-of keyword? any? :kind #(= (count %) 1)))
+(def attributes (s/map-of keyword? any?))
 
-(s/def ::delta/insert (s/or :text ::delta/text :embed ::delta/embed))
+(s/def ::delta/insert (s/or :text text :embed embed))
 (s/def ::delta/delete pos-int?)
 (s/def ::delta/retain pos-int?)
-
-(s/def ::delta/attributes (s/map-of keyword? any? :kind seq))
+(s/def ::delta/attributes (s/and attributes seq))
 
 (defmulti operation-spec #(when (map? %) (operation/type %)))
 
@@ -48,12 +48,23 @@
 
 (s/def ::delta/operation (s/multi-spec operation-spec (fn [o _] o)))
 
-(defn unconform-operation
-  ""
+(defn- unconform-operation
+  "Given `conformed-operation`, the result of of conforming a value to
+  `::delta/operation`, returns a raw operation.
+  "
   [conformed-operation]
   (if (::delta/insert conformed-operation)
     (update conformed-operation ::delta/insert val)
     conformed-operation))
+
+(defn- conformed-operation-length
+  "Given `conformed-operation`, the result of of conforming a value to
+  `::delta/operation`, returns the operation’s length in characters.
+  "
+  [conformed-operation]
+  (-> conformed-operation
+      unconform-operation
+      operation/length))
 
 (s/def ::delta/delta (s/coll-of ::delta/operation))
 
@@ -66,25 +77,33 @@
   :ret #{::delta/insert ::delta/delete ::delta/retain})
 
 (defn- operation-type-preserved?
-  ""
+  "True if the instrumented function returned an operation with the
+  same type as its `operation` argument.
+  "
   [{:keys [args ret]}]
   (= (-> ret operation/type)
      (-> args :operation operation/type)))
 
 (defn- attributes-preserved?
-  ""
+  "True if the instrumented function returned an operation with the
+  same attributes as its `operation` argument.
+  "
   [{:keys [args ret]}]
   (= (-> ret ::delta/attributes)
      (-> args :operation ::delta/attributes)))
 
-(defn- length-clipped-to-n?
-  ""
+(defn- operation-shortenend-to-n?
+  "True if the instrumented function shortened its `operation` argument
+  to `n` characters (`n` is also an argument).
+  "
   [{:keys [args ret]}]
-  (= (-> ret unconform-operation operation/length)
-     (min (:n args) (-> args :operation unconform-operation operation/length))))
+  (= (-> ret conformed-operation-length)
+     (min (:n args) (-> args :operation conformed-operation-length))))
 
 (defn- text-preserved?
-  ""
+  "True the text of the result operation of the instrumented function
+  stands in `relation` to the text of its `operation` argument.
+  "
   [relation {:keys [args ret]}]
   (let [insert-text (some->> args :operation ::delta/insert (apply hash-map) :text)]
     (or (nil? insert-text)
@@ -93,11 +112,11 @@
 (s/fdef operation/take'
   :args (s/and (s/cat :n pos-int? :operation ::delta/operation)
                #(not (= :embed (some-> % :operation ::delta/insert key)))
-               #(<= (:n %) (-> % :operation unconform-operation operation/length)))
+               #(<= (:n %) (-> % :operation conformed-operation-length)))
   :ret ::delta/operation
   :fn (s/and operation-type-preserved?
              attributes-preserved?
-             length-clipped-to-n?
+             operation-shortenend-to-n?
              #(text-preserved? string/starts-with? %)))
 
 (s/fdef operation/take
@@ -108,19 +127,21 @@
             :non-nil (s/and #(-> % :args :n pos?)
                             operation-type-preserved?
                             attributes-preserved?
-                            length-clipped-to-n?
+                            operation-shortenend-to-n?
                             #(text-preserved? string/starts-with? %))))
 
 (defn- length-shortened-by-n?
-  ""
+  "True if the instrumented function shortened its `operation` argument
+  by `n` characters (`n` is also an argument).
+  "
   [{:keys [args ret]}]
-  (= (- (-> args :operation unconform-operation operation/length) (-> args :n (max 0)))
-     (-> ret unconform-operation operation/length)))
+  (= (- (-> args :operation conformed-operation-length) (-> args :n (max 0)))
+     (-> ret conformed-operation-length)))
 
 (s/fdef operation/drop'
   :args (s/and (s/cat :n nat-int? :operation ::delta/operation)
                #(not (= :embed (some-> % :operation ::delta/insert key)))
-               #(< (:n %) (-> % :operation unconform-operation operation/length dec)))
+               #(< (:n %) (-> % :operation conformed-operation-length dec)))
   :ret ::delta/operation
   :fn (s/and operation-type-preserved?
              attributes-preserved?
@@ -130,33 +151,43 @@
 (s/fdef operation/drop
   :args (s/cat :n int? :operation ::delta/operation)
   :ret (s/nilable ::delta/operation)
-  :fn (s/or :nil (s/and #(>= (-> % :args :n) (-> % :args :operation unconform-operation operation/length))
+  :fn (s/or :nil (s/and #(>= (-> % :args :n) (-> % :args :operation conformed-operation-length))
                         #(-> % :ret nil?))
-            :non-nil (s/and #(< (-> % :args :n) (-> % :args :operation unconform-operation operation/length))
+            :non-nil (s/and #(< (-> % :args :n) (-> % :args :operation conformed-operation-length))
                             operation-type-preserved?
                             attributes-preserved?
                             length-shortened-by-n?
                             #(text-preserved? string/ends-with? %))))
 
+(defn- has-type
+  ""
+  [type]
+  #(type %))
+
 (s/fdef operation/delete
   :args (s/cat :n int?)
-  :ret (s/nilable (s/and ::delta/operation
-                         #(::delta/delete %)))
+  :ret (s/nilable (s/and ::delta/operation (has-type ::delta/delete)))
   :fn (s/or :nil (s/and #(-> % :args :n pos? not)
                         #(-> % :ret nil?))
             :non-nil (s/and #(-> % :args :n pos?)
                             #(= (-> % :args :n)
-                                (-> % :ret operation/length)))))
+                                (-> % :ret conformed-operation-length)))))
 
 (defn- operation-contents-preserved?
-  ""
+  "True if the instrumented function returned an operation with the same
+  contents as the function’s `operation` argument. For delete and retain
+  operations, the contents is simply the operation’s length. For insert
+  operations, the contents is the text or embed.
+  "
   [{:keys [args ret]}]
   (let [type (operation/type ret)]
     (= (type ret)
        (-> args :operation type))))
 
 (defn- attributes-set?
-  ""
+  "True if the instrumented function returned an operation with the same
+  attributes as the function’s `attributes` argument.
+  "
   [{:keys [args ret]}]
   (let [arg-attrs (-> args :attributes)
         ret-attrs (-> ret ::delta/attributes)]
@@ -164,21 +195,59 @@
         (= arg-attrs ret-attrs))))
 
 (s/fdef operation/with-attributes
-  :args (s/cat :operation ::delta/operation :attributes (s/nilable (s/map-of keyword? any?)))
+  :args (s/cat :operation ::delta/operation :attributes (s/nilable attributes))
   :ret ::delta/operation
   :fn (s/and operation-type-preserved?
              operation-contents-preserved?
              attributes-set?))
 
 (s/fdef operation/insert
-  :args (s/cat :val (s/alt :text string? :embed ::delta/embed)
-               :attributes (s/? (s/nilable (s/map-of keyword? any?))))
-  :ret (s/nilable (s/and ::delta/operation
-                         #(::delta/insert %)))
+  :args (s/cat :val (s/alt :text string? :embed embed)
+               :attributes (s/? (s/nilable attributes)))
+  :ret (s/nilable (s/and ::delta/operation (has-type ::delta/insert)))
   :fn (s/or :nil (s/and #(-> % :args :val val (= ""))
                         #(-> % :ret nil?))
             :non-nil (s/and #(-> % :args :val val (= "") not)
                             attributes-set?
                             #(= (-> % :args :val val)
                                 ((-> % :args :val key)
-                                  (->> % :ret ::delta/insert (apply hash-map)))))))
+                                 (->> % :ret ::delta/insert (apply hash-map)))))))
+
+(s/fdef operation/retain
+  :args (s/cat :n int?
+               :attributes (s/? (s/nilable attributes)))
+  :ret (s/nilable (s/and ::delta/operation (has-type ::delta/retain)))
+  :fn (s/or :nil (s/and #(-> % :args :n pos? not)
+                        #(-> % :ret nil?))
+            :non-nil (s/and #(-> % :args :n pos?)
+                            attributes-set?
+                            #(= (-> % :args :n)
+                                (-> % :ret conformed-operation-length)))))
+
+(defn- nil-keys
+  "Given a map `m`, return a sequence of those keys that are bound to a
+  `nil` value."
+  [m]
+  (into [] (comp (filter (comp nil? val)) (map key)) m))
+
+(defn- dissoc-all
+  "Returns a copy of `map` with the `keys` removed."
+  [map keys]
+  (apply dissoc map keys))
+
+(defn- apply-attribute-diff
+  "Given a map of `attributes` and a `diff`, apply the `diff` to the
+  `attributes` and return the result.
+  "
+  [attributes diff]
+  (-> attributes
+      (merge diff)
+      (dissoc-all (nil-keys diff))))
+
+(s/fdef operation/attribute-diff
+  :args (s/cat :attributes (s/nilable (s/and attributes #(every? (comp some? val) %)))
+               :other-attributes (s/nilable (s/and attributes #(every? (comp some? val) %))))
+  :ret attributes
+  :fn (s/and #(every? (partial contains? (-> % :args :attributes)) (-> % :ret nil-keys))
+             #(= (-> % :args :other-attributes (or {}))
+                 (-> % :args :attributes (apply-attribute-diff (:ret %))))))
