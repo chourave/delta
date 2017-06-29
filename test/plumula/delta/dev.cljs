@@ -22,4 +22,5 @@
 
 (ns plumula.delta.dev
   (:require [plumula.delta]
-            [plumula.delta.spec]))
+            [plumula.delta.spec]
+            [plumula.delta.spec.operation]))
