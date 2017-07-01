@@ -1,5 +1,6 @@
 (ns plumula.delta.spec.helper
   (:require [clojure.spec.alpha :as s]
+            [clojure.spec.gen.alpha :as gen]
             [clojure.string :as string])
   #?(:cljs (:require-macros [plumula.delta.spec.helper])))
 
@@ -8,11 +9,14 @@
 
 (def text
   ""
-  (s/and string? #(-> % count pos?)))
+  (s/and string? seq))
 
 (def embed
   ""
-  (s/map-of keyword? any? :kind #(= (count %) 1)))
+  (-> (s/map-of keyword? any? :kind #(= (count %) 1))
+      (s/with-gen #(gen/fmap (fn [[k v]] {k v})
+                             (gen/tuple (gen/gen-for-pred keyword?)
+                                        (gen/gen-for-pred any?))))))
 
 (def attributes
   ""
