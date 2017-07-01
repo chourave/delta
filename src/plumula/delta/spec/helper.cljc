@@ -19,11 +19,14 @@
                                         (gen/gen-for-pred any?))))))
 
 (def attributes
-  ""
+  "Specifies an operation’s attributes, which are encoded as a map of key-value
+  pairs. `nil` values are allowed, for instance they are needed in `:retain`
+  operations.
+  "
   (s/map-of keyword? any?))
 
 (def valued-attributes
-  ""
+  "Like `attributes`, except `nil` values are forbidden."
   (s/and attributes
          #(every? (comp some? val) %)))
 
@@ -33,20 +36,20 @@
   (boolean (:ns env)))
 
 (defmacro if-cljs
-  "Return then if we are generating cljs code and else for Clojure code.
+  "Return `then` if we are generating cljs code and `else` for Clojure code.
    https://groups.google.com/d/msg/clojurescript/iBY5HaQda4A/w1lAQi9_AwsJ"
   [then else]
   (if (cljs-env? &env) then else))
 
 (defmacro s-or
-  ""
+  "Logical disjunction of predicates, whether we’re running on Clojure or ClojureScript."
   [& args]
   `(if-cljs
      (cljs.spec.alpha/or ~@args)
      (clojure.spec.alpha/or ~@args)))
 
 (defmacro s-and
-  ""
+  "Logical conjunction of predicates, whether we’re running on Clojure or ClojureScript."
   [& args]
   `(if-cljs
      (cljs.spec.alpha/and ~@args)
