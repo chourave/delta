@@ -15,8 +15,8 @@
   ""
   (-> (s/map-of keyword? any? :kind #(= (count %) 1))
       (s/with-gen #(gen/fmap (fn [[k v]] {k v})
-                             (gen/tuple (gen/gen-for-pred keyword?)
-                                        (gen/gen-for-pred any?))))))
+                             (gen/tuple (s/gen keyword?)
+                                        (s/gen any?))))))
 
 (def attributes
   "Specifies an operation’s attributes, which are encoded as a map of key-value
