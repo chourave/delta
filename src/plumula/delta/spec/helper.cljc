@@ -30,6 +30,12 @@
   (s/and attributes
          #(every? (comp some? val) %)))
 
+(s/def :plumula.delta/insert (s/or :text text
+                                   :embed embed))
+(s/def :plumula.delta/delete pos-int?)
+(s/def :plumula.delta/retain pos-int?)
+(s/def :plumula.delta/attributes (s/and attributes seq))
+
 (defn cljs-env?
   "Take the &env from a macro, and tell whether we are expanding into cljs."
   [env]

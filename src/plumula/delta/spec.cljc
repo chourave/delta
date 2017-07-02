@@ -25,9 +25,3 @@
             [clojure.string :as string]
             [plumula.delta :as delta]
             [plumula.delta.spec.helper :as h]))
-
-(s/def ::delta/insert (s/or :text h/text
-                            :embed h/embed))
-(s/def ::delta/delete pos-int?)
-(s/def ::delta/retain pos-int?)
-(s/def ::delta/attributes (s/and h/attributes seq))
