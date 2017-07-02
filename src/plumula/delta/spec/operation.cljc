@@ -3,7 +3,8 @@
             [clojure.string :as string]
             [plumula.delta :as delta]
             [plumula.delta.operation :as operation]
-            [plumula.delta.spec.helper :as h]))
+            [plumula.delta.spec.helper :as h]
+            [clojure.test.check.generators :as gen]))
 
 (defmulti operation-spec #(when (map? %) (operation/type %)))
 
@@ -79,10 +80,24 @@
     (or (nil? insert-text)
         (relation insert-text (-> ret ::delta/insert val)))))
 
+(def gen-non-embed-operation
+  (gen/one-of
+    [(s/gen (operation-spec {::delta/retain nil}))
+     (s/gen (operation-spec {::delta/delete nil}))
+     (->> (s/cat :insert h/text :attributes (s/? ::delta/attributes))
+          s/gen
+          (gen/fmap (partial apply operation/insert)))]))
+
 (s/fdef operation/take'
-  :args (s/and (s/cat :n pos-int? :operation ::delta/operation)
-               #(not (= :embed (some-> % :operation ::delta/insert key)))
-               #(<= (:n %) (-> % :operation conformed-operation-length)))
+  :args (-> (s/and (s/cat :n pos-int? :operation ::delta/operation)
+                   #(not (= :embed (some-> % :operation ::delta/insert key)))
+                   #(<= (:n %) (-> % :operation conformed-operation-length)))
+            (s/with-gen
+              #(gen/bind gen-non-embed-operation
+                         (fn [o]
+                           (s/gen (s/tuple
+                                    (s/int-in 1 (-> o operation/length inc))
+                                    #{o}))))))
   :ret ::delta/operation
   :fn (s/and operation-type-preserved?
              attributes-preserved?
@@ -108,9 +123,15 @@
      (-> ret conformed-operation-length)))
 
 (s/fdef operation/drop'
-  :args (s/and (s/cat :n nat-int? :operation ::delta/operation)
+  :args (-> (s/and (s/cat :n nat-int? :operation ::delta/operation)
                #(not (= :embed (some-> % :operation ::delta/insert key)))
                #(< (:n %) (-> % :operation conformed-operation-length dec)))
+            (s/with-gen
+              #(gen/bind gen-non-embed-operation
+                         (fn [o]
+                           (s/gen (s/tuple
+                                    (s/int-in 0 (operation/length o))
+                                    #{o}))))))
   :ret ::delta/operation
   :fn (s/and operation-type-preserved?
              attributes-preserved?
